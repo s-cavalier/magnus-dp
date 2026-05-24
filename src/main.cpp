@@ -5,6 +5,7 @@
 #include <random>
 #include <algorithm>
 #include <span>
+#include "integrate.hpp"
 
 std::random_device rd;
 std::mt19937 gen(rd());
@@ -16,32 +17,13 @@ struct RandomGenerator {
     }
 };
 
+extern "C" std::byte _binary_gl_nodes_bin_start[];
+
 int main() {
-    Magnus::DynMatrix<float> x(2);
-    x.fill(RandomGenerator{});
+    GLTable::update( std::make_shared<StaticTable>( _binary_gl_nodes_bin_start ) );
 
-    Magnus::DynMatrix<float> y(2);
-    y.fill(RandomGenerator{});
     
-    for (auto row : x) {
-        for ( auto f : row ) std::cout << f << ' ';
-        std::cout << '\n';
-    }
-    std::cout << '\n';
-
-    for (auto row : y) {
-        for ( auto f : row ) std::cout << f << ' ';
-        std::cout << '\n';
-    }
-    std::cout << '\n';
-
-    auto c = Magnus::matmul(x, y);
     
-    for (auto row : c) {
-        for ( auto f : row ) std::cout << f << ' ';
-        std::cout << '\n';
-    }
-    std::cout << '\n';
 
     return 0;
 }

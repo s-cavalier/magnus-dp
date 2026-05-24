@@ -5,8 +5,7 @@
 #include <memory>
 #include <utility>
 #include <algorithm>
-#include <mkl/mkl_cblas.h>
-#include <mkl/mkl_lapack.h>
+#include <cblas.h>
 #include <stdexcept>
 #include <string>
 #include <concepts>
@@ -90,6 +89,11 @@ public:
     const NumT& operator[](size_t r, size_t c) const {
         return m_data[ r * m_dim + c ];
     }
+
+    // Does NOT check for proper sizes.
+    void copy_from(const MatrixView& other) {
+        std::copy_n( other.m_data, size(), m_data );
+    };
     
     std::span<NumT> at(size_t i) {
         if ( i >= m_dim ) {
@@ -172,6 +176,27 @@ public:
             cblas_zaxpy( size(), (const void*)&alpha, other.m_data, 1, m_data, 1);
         } else {
             for (size_t i = 0; i < size(); ++i) m_data[i] += other.m_data[i];
+        }
+
+        return *this;
+    }
+
+    /* **NOTE:** operator+ does NOT check for equal dimension. Should be optionally verified beforehand. */
+    template <class ScalarT>
+    MatrixView& add_scaled( const MatrixView& other, const ScalarT& scalar ) {
+        if constexpr ( std::is_same_v<NumT, float> && std::is_convertible_v<ScalarT, float> ) {
+            cblas_saxpy( size(), scalar, other.m_data, 1, m_data, 1);
+        } 
+        else if constexpr ( std::is_same_v<NumT, double> && std::is_convertible_v<ScalarT, double> ) {
+            cblas_daxpy( size(), scalar, other.m_data, 1, m_data, 1);
+        }
+        else if constexpr ( std::is_same_v<NumT, std::complex<float>> && std::is_convertible_v<ScalarT, std::complex<float>> ) {
+            cblas_caxpy( size(), (const void*)&scalar, other.m_data, 1, m_data, 1);
+        }
+        else if constexpr ( std::is_same_v<NumT, std::complex<double>> && std::is_convertible_v<ScalarT, std::complex<double>> ) {
+            cblas_zaxpy( size(), (const void*)&scalar, other.m_data, 1, m_data, 1);
+        } else {
+            for (size_t i = 0; i < size(); ++i) m_data[i] += other.m_data[i] * scalar;
         }
 
         return *this;
@@ -302,9 +327,8 @@ public:
 
 };
 
-template <class NumT, class AllocatorT = std::allocator<NumT>>
-DynMatrix<NumT, AllocatorT> matmul(const MatrixView<NumT>& a, const MatrixView<NumT>& b, const AllocatorT& alloc = AllocatorT()) {
-    DynMatrix<NumT, AllocatorT> ret( a.dim(), alloc );
+template <class NumT>
+void matmul(const MatrixView<NumT>& a, const MatrixView<NumT>& b, MatrixView<NumT>& out) {
     size_t dim = a.dim();
 
     if ( dim >= 64 ) {
@@ -320,11 +344,10 @@ DynMatrix<NumT, AllocatorT> matmul(const MatrixView<NumT>& a, const MatrixView<N
                 b.data(),
                 dim,
                 0.0f,
-                ret.data(),
+                out.data(),
                 dim
             );
 
-            return ret;
         } 
         else if constexpr ( std::is_same_v<NumT, double> ) {
             cblas_dgemm(
@@ -338,11 +361,10 @@ DynMatrix<NumT, AllocatorT> matmul(const MatrixView<NumT>& a, const MatrixView<N
                 b.data(),
                 dim,
                 0.0f,
-                ret.data(),
+                out.data(),
                 dim
             );
 
-            return ret;
         }
         else if constexpr ( std::is_same_v<NumT, std::complex<float>> ) {
             std::complex<float> alpha(1, 0);
@@ -358,11 +380,10 @@ DynMatrix<NumT, AllocatorT> matmul(const MatrixView<NumT>& a, const MatrixView<N
                 b.data(),
                 dim,
                 (const void*)&beta,
-                ret.data(),
+                out.data(),
                 dim
             );
 
-            return ret;
         }
         else if constexpr ( std::is_same_v<NumT, std::complex<double>> ) {
             std::complex<double> alpha(1, 0);
@@ -378,24 +399,31 @@ DynMatrix<NumT, AllocatorT> matmul(const MatrixView<NumT>& a, const MatrixView<N
                 b.data(),
                 dim,
                 (const void*)&beta,
-                ret.data(),
+                out.data(),
                 dim
             );
 
-            return ret;
         } 
     }
 
     for (size_t i = 0; i < dim; ++i) {
         for (size_t j = 0; j < dim; ++j) {
-            ret[i, j] = 0;
+            out[i, j] = 0;
 
-            for (size_t k = 0; k < dim; ++k) ret[i, j] += a[i, k] * b[k, j];
+            for (size_t k = 0; k < dim; ++k) out[i, j] += a[i, k] * b[k, j];
         }
     }
 
-    return ret;
 }
+
+//template <class NumT, class AllocatorT = std::allocator<NumT>>
+//DynMatrix<NumT, AllocatorT> matmul(const MatrixView<NumT>& a, const MatrixView<NumT>& b, const AllocatorT& alloc = AllocatorT()) {
+    //DynMatrix<NumT, AllocatorT> ret( a.dim(), alloc );
+    
+    //matmul(a, b, ret);
+
+    //return ret;
+//}
 
 }
 
