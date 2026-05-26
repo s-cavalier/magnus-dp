@@ -5,7 +5,7 @@
 #include <memory>
 #include <utility>
 #include <algorithm>
-#include <mkl/mkl_cblas.h>
+#include <cblas.h>
 #include <stdexcept>
 #include <string>
 #include <concepts>
