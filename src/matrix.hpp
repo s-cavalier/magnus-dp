@@ -5,20 +5,243 @@
 #include <memory>
 #include <utility>
 #include <algorithm>
-#include <cblas.h>
+#include <mkl/mkl_cblas.h>
 #include <stdexcept>
 #include <string>
 #include <concepts>
 
 namespace Magnus {
 
+    template <class T>
+    concept MatrixPolicy = requires(
+        const typename T::numeric_t* cm,
+        typename T::numeric_t* m
+    ) {
+        typename T::numeric_t;
+
+        { T::matmul( size_t{}, cm, cm, m ) } -> std::same_as<void>;
+        { T::matadd( size_t{}, m, cm, double{} ) } -> std::same_as<void>;
+        { T::matscale( size_t{}, m, double{} ) } -> std::same_as<void>;
+    };
+
     template <class NumT>
+    using MatMulKernelT = void(&)(size_t, const NumT*, const NumT*, NumT*);
+
+    template <class NumT>
+    using MatAddKernelT = void(&)(size_t, NumT*, const NumT*, double);
+
+    template <class NumT>
+    using MatScaleKernelT = void(&)(size_t, NumT*, double);
+
+    template <class NumT, MatMulKernelT<NumT> mm_kernel, MatAddKernelT<NumT> ma_kernel, MatScaleKernelT<NumT> ms_kernel>
+    struct GenericMatrixPolicy {
+        using numeric_t = NumT;
+
+        static void matmul(size_t dim, const NumT* a, const NumT* b, NumT* out) {
+            mm_kernel(dim, a, b, out);
+        }
+
+        static void matadd(size_t dim, NumT* a, const NumT* b, double scalar = 1.0) {
+            ma_kernel(dim, a, b, scalar);
+        }
+
+        static void matscale(size_t dim, NumT* a, double scalar) {
+            ms_kernel(dim, a, scalar);
+        }
+    };
+
+    template <class NumT>
+    void blas_matmul(size_t dim, const NumT* a, const NumT* b, NumT* out ) {
+        if constexpr ( std::is_same_v<NumT, float> ) {
+            cblas_sgemm(
+                CblasRowMajor,
+                CblasNoTrans,
+                CblasNoTrans,
+                dim, dim, dim,
+                1,
+                a,
+                dim,
+                b,
+                dim,
+                0.0f,
+                out,
+                dim
+            );
+
+        }
+        else if constexpr ( std::is_same_v<NumT, double> ) {
+            cblas_dgemm(
+                CblasRowMajor,
+                CblasNoTrans,
+                CblasNoTrans,
+                dim, dim, dim,
+                1,
+                a,
+                dim,
+                b,
+                dim,
+                0.0f,
+                out,
+                dim
+            );
+
+        }
+        else if constexpr ( std::is_same_v<NumT, std::complex<float>> ) {
+            std::complex<float> alpha(1, 0);
+            std::complex<float> beta(0, 0);
+            cblas_cgemm(
+                CblasRowMajor,
+                CblasNoTrans,
+                CblasNoTrans,
+                dim, dim, dim,
+                (const void*)&alpha,
+                a,
+                dim,
+                b,
+                dim,
+                (const void*)&beta,
+                out,
+                dim
+            );
+
+        }
+        else if constexpr ( std::is_same_v<NumT, std::complex<double>> ) {
+            std::complex<double> alpha(1, 0);
+            std::complex<double> beta(0, 0);
+            cblas_zgemm(
+                CblasRowMajor,
+                CblasNoTrans,
+                CblasNoTrans,
+                dim, dim, dim,
+                (const void*)&alpha,
+                a,
+                dim,
+                b,
+                dim,
+                (const void*)&beta,
+                out,
+                dim
+            );
+
+        }
+    }
+
+    template <class NumT>
+    void blas_matadd( size_t dim, NumT* a, const NumT* b, double scalar ) {
+        size_t size = dim * dim;
+
+        if constexpr ( std::is_same_v<NumT, float> ) {
+            cblas_saxpy( size, scalar, b, 1, a, 1);
+        }
+        else if constexpr ( std::is_same_v<NumT, double> ) {
+            cblas_daxpy( size, scalar, b, 1, a, 1);
+        }
+        else if constexpr ( std::is_same_v<NumT, std::complex<float>> ) {
+            std::complex<float> alpha(scalar, 0);
+            cblas_caxpy( size, (const void*)&alpha, b, 1, a, 1);
+        }
+        else if constexpr ( std::is_same_v<NumT, std::complex<double>> ) {
+            std::complex<double> alpha(scalar, 0);
+            cblas_zaxpy( size, (const void*)&alpha, b, 1, a, 1);
+        } else {
+            for (size_t i = 0; i < size; ++i) a[i] += b[i] * scalar;
+        }
+
+    }
+
+    template <class NumT>
+    void blas_matscale(size_t dim, NumT* a, double scalar) {
+        size_t size = dim * dim;
+
+        if constexpr ( std::is_same_v<NumT, float> ) {
+            cblas_sscal( size, scalar, a, 1 );
+        }
+        else if constexpr ( std::is_same_v<NumT, double> ) {
+            cblas_dscal( size, scalar, a, 1 );
+        }
+        else if constexpr ( std::is_same_v<NumT, std::complex<float>>) {
+            cblas_csscal( size, scalar, a, 1 );
+        }
+        else if constexpr ( std::is_same_v<NumT, std::complex<double>> ) {
+            cblas_zdscal( size, scalar, a, 1 );
+        }
+        else {
+            for (size_t i = 0; i < size; ++i) a[i] *= scalar;
+        }
+    }
+
+    template <class NumT>
+    using BlasPolicy = GenericMatrixPolicy<NumT, blas_matmul<NumT>, blas_matadd<NumT>, blas_matscale<NumT>>;
+
+    template <class NumT>
+    void manual_matmul( size_t dim, const NumT* a, const NumT* b, NumT* out ) {
+        for (size_t i = 0; i < dim; ++i) {
+            for (size_t j = 0; j < dim; ++j) {
+                out[i * dim + j] = 0;
+
+                for (size_t k = 0; k < dim; ++k) out[i * dim + j] += a[i * dim + k] * b[k * dim + j];
+            }
+        }
+
+    }
+
+    template <class NumT>
+    void manual_matadd(size_t dim, NumT* a, const NumT* b, double scalar) {
+        size_t size = dim * dim;
+        for (size_t i = 0; i < size; ++i) a[i] += b[i] * scalar;
+    }
+
+    template <class NumT>
+    void manual_matscale(size_t dim, NumT* a, double scalar) {
+        size_t size = dim * dim;
+        for (size_t i = 0; i < size; ++i) a[i] *= scalar;
+    }
+
+    template <class NumT>
+    using ManualPolicy = GenericMatrixPolicy<NumT, manual_matmul<NumT>, manual_matadd<NumT>, manual_matscale<NumT>>;
+
+    template <class NumT, size_t Dim>
+    void fixed_dim_matmul([[maybe_unused]] size_t dim, const NumT* a, const NumT* b, NumT* out) {
+        if constexpr ( Dim == 2 ) {
+            out[0] = a[0] * b[0] + a[1] * b[2];
+            out[1] = a[0] * b[1] + a[1] * b[3];
+            out[2] = a[2] * b[0] + a[3] * b[2];
+            out[3] = a[2] * b[1] + a[3] * b[3];
+            return;
+        }
+
+        for (size_t i = 0; i < Dim; ++i) {
+            for (size_t j = 0; j < Dim; ++j) {
+                out[i * Dim + j] = 0;
+
+                for (size_t k = 0; k < Dim; ++k) out[i * Dim + j] += a[i * Dim + k] * b[k * Dim + j];
+            }
+        }
+
+    }
+
+    template <class NumT, size_t Dim>
+    void fixed_dim_matadd( [[maybe_unused]] size_t dim, NumT* a, const NumT* b, double scalar ) {
+        for (size_t i = 0; i < Dim * Dim; ++i) a[i] += b[i] * scalar;
+    }
+
+    template <class NumT, size_t Dim>
+    void fixed_dim_matscale( [[maybe_unused]] size_t dim, NumT* a, double scalar ) {
+        for (size_t i = 0; i < Dim * Dim; ++i) a[i] *= scalar;
+    }
+
+    template <class NumT, size_t Dim>
+    using FixedDimPolicy = GenericMatrixPolicy<NumT, fixed_dim_matmul<NumT, Dim>, fixed_dim_matadd<NumT, Dim>, fixed_dim_matscale<NumT, Dim>>;
+
+    template <class NumT, MatrixPolicy MatPolicyT>
     class MatrixView {
     protected:
         NumT* m_data;
         size_t m_dim;
 
     public:
+        using matrix_policy_t = MatPolicyT;
+
         MatrixView(NumT* data, size_t dimension) : m_data(data), m_dim(dimension) {}
 
         size_t dim() const { return m_dim; }
@@ -94,7 +317,7 @@ namespace Magnus {
         void copy_from(const MatrixView& other) {
             std::copy_n( other.m_data, size(), m_data );
         };
-        
+
         std::span<NumT> at(size_t i) {
             if ( i >= m_dim ) {
                 std::string err_msg = "Out of bounds access at row ";
@@ -153,112 +376,29 @@ namespace Magnus {
             for (size_t i = 0; i < s; ++i) m_data[i] = callable();
         }
 
-        // blas convention:
-        // s = real float
-        // c = complex float
-        // d = real double
-        // z = complex double
-
-        /* **NOTE:** operator+ does NOT check for equal dimension. Should be optionally verified beforehand. */
-        MatrixView& add( const MatrixView& other ) {
-            if constexpr ( std::is_same_v<NumT, float> ) {
-                cblas_saxpy( size(), 1, other.m_data, 1, m_data, 1);
-            } 
-            else if constexpr ( std::is_same_v<NumT, double> ) {
-                cblas_daxpy( size(), 1, other.m_data, 1, m_data, 1);
-            }
-            else if constexpr ( std::is_same_v<NumT, std::complex<float>> ) {
-                std::complex<float> alpha(1, 0);
-                cblas_caxpy( size(), (const void*)&alpha, other.m_data, 1, m_data, 1);
-            }
-            else if constexpr ( std::is_same_v<NumT, std::complex<double>> ) {
-                std::complex<double> alpha(1, 0);
-                cblas_zaxpy( size(), (const void*)&alpha, other.m_data, 1, m_data, 1);
-            } else {
-                for (size_t i = 0; i < size(); ++i) m_data[i] += other.m_data[i];
-            }
-
-            return *this;
-        }
-
-        /* **NOTE:** operator+ does NOT check for equal dimension. Should be optionally verified beforehand. */
-        template <class ScalarT>
-        MatrixView& add_scaled( const MatrixView& other, const ScalarT& scalar ) {
-            if constexpr ( std::is_same_v<NumT, float> && std::is_convertible_v<ScalarT, float> ) {
-                cblas_saxpy( size(), scalar, other.m_data, 1, m_data, 1);
-            } 
-            else if constexpr ( std::is_same_v<NumT, double> && std::is_convertible_v<ScalarT, double> ) {
-                cblas_daxpy( size(), scalar, other.m_data, 1, m_data, 1);
-            }
-            else if constexpr ( std::is_same_v<NumT, std::complex<float>> && std::is_convertible_v<ScalarT, std::complex<float>> ) {
-                cblas_caxpy( size(), (const void*)&scalar, other.m_data, 1, m_data, 1);
-            }
-            else if constexpr ( std::is_same_v<NumT, std::complex<double>> && std::is_convertible_v<ScalarT, std::complex<double>> ) {
-                cblas_zaxpy( size(), (const void*)&scalar, other.m_data, 1, m_data, 1);
-            } else {
-                for (size_t i = 0; i < size(); ++i) m_data[i] += other.m_data[i] * scalar;
-            }
-
-            return *this;
-        }
-
-        /* **NOTE:** operator+ does NOT check for equal dimension. Should be optionally verified beforehand. */
-        MatrixView& sub( const MatrixView& other ) {
-            if constexpr ( std::is_same_v<NumT, float> ) {
-                cblas_saxpy( size(), -1, other.m_data, 1, m_data, 1);
-            } 
-            else if constexpr ( std::is_same_v<NumT, double> ) {
-                cblas_daxpy( size(), -1, other.m_data, 1, m_data, 1);
-            }
-            else if constexpr ( std::is_same_v<NumT, std::complex<float>> ) {
-                std::complex<float> alpha(-1, 0);
-                cblas_caxpy( size(), (const void*)&alpha, other.m_data, 1, m_data, 1);
-            }
-            else if constexpr ( std::is_same_v<NumT, std::complex<double>> ) {
-                std::complex<double> alpha(-1, 0);
-                cblas_zaxpy( size(), (const void*)&alpha, other.m_data, 1, m_data, 1);
-            } else {
-                for (size_t i = 0; i < size(); ++i) m_data[i] += other.m_data[i];
-            }
-
-            return *this;
-        }
-
-        template <class ScalarT>
-        MatrixView& scale(const ScalarT& num) {
-            if constexpr ( std::is_same_v<NumT, float> ) {
-                cblas_sscal( size(), num, m_data, 1 );
-            } 
-            else if constexpr ( std::is_same_v<NumT, double> ) {
-                cblas_dscal( size(), num, m_data, 1 );
-            }
-            else if constexpr ( std::is_same_v<NumT, std::complex<float>> && std::is_same_v<ScalarT, std::complex<float>> ) {
-                cblas_cscal( size(), (const void*)&num, m_data, 1 );
-            }
-            else if constexpr ( std::is_same_v<NumT, std::complex<float>> && std::is_convertible_v<ScalarT, float> ) {
-                cblas_csscal( size(), num, m_data, 1 );
-            }
-            else if constexpr ( std::is_same_v<NumT, std::complex<double>> && std::is_same_v<ScalarT, std::complex<double>> ) {
-                cblas_zdscal( size(), (const void*)&num, m_data, 1 );
-            } 
-            else if constexpr ( std::is_same_v<NumT, std::complex<double>> && std::is_convertible_v<ScalarT, double> ) {
-                cblas_zdscal( size(), num, m_data, 1 );
-            } 
-            else {
-                for (size_t i = 0; i < size(); ++i) m_data[i] *= num;
-            }
-
-            return *this;
-        }
-
         void zero() {
             std::fill_n( m_data, size(), 0 );
+        }
+
+        MatrixView& add( const MatrixView& other, double scalar = 1.0 ) {
+            matrix_policy_t::matadd( m_dim, m_data, other.data(), scalar );
+            return *this;
+        }
+
+        MatrixView& scale( double scalar ) {
+            matrix_policy_t::matscale( m_dim, m_data, scalar );
+            return *this;
+        }
+
+        // Note; saves the result of A @ B
+        MatrixView& save_matmul( const MatrixView& a, const MatrixView& b ) {
+            matrix_policy_t::matmul( m_dim, a.data(), b.data(), m_data );
+            return *this;
         }
 
     };
 
         namespace detail {
-
             template <class Alloc>
             struct alloc_holder {
                 [[no_unique_address]] Alloc alloc;
@@ -268,8 +408,8 @@ namespace Magnus {
 
         }
 
-    template <class NumT, class AllocatorT = std::allocator<NumT>>
-    class DynMatrix : public MatrixView<NumT>, private detail::alloc_holder<AllocatorT> {
+    template <class NumT, MatrixPolicy MatPolicyT, class AllocatorT = std::allocator<NumT>>
+    class DynMatrix : public MatrixView<NumT, MatPolicyT>, private detail::alloc_holder<AllocatorT> {
 
         void reset() {
             if (this->m_dim > 0) this->alloc.deallocate(this->m_data, this->size());
@@ -279,7 +419,7 @@ namespace Magnus {
         DynMatrix() {};
 
     public:
-        using Base = MatrixView<NumT>;
+        using Base = MatrixView<NumT, MatPolicyT>;
         using AllocBase = detail::alloc_holder<AllocatorT>;
 
         DynMatrix(size_t dim, const AllocatorT& alloc = AllocatorT()) : Base(nullptr, dim), AllocBase(alloc) {
@@ -331,107 +471,7 @@ namespace Magnus {
 
     };
 
-    template <class NumT>
-    void blas_matmul( const MatrixView<NumT>& a, const MatrixView<NumT>& b, MatrixView<NumT>& out ) {
-        size_t dim = a.dim();
-
-        if constexpr ( std::is_same_v<NumT, float> ) {
-            cblas_sgemm(
-                CblasRowMajor, 
-                CblasNoTrans, 
-                CblasNoTrans, 
-                dim, dim, dim, 
-                1, 
-                a.data(), 
-                dim,
-                b.data(),
-                dim,
-                0.0f,
-                out.data(),
-                dim
-            );
-
-        } 
-        else if constexpr ( std::is_same_v<NumT, double> ) {
-            cblas_dgemm(
-                CblasRowMajor, 
-                CblasNoTrans, 
-                CblasNoTrans, 
-                dim, dim, dim, 
-                1, 
-                a.data(), 
-                dim,
-                b.data(),
-                dim,
-                0.0f,
-                out.data(),
-                dim
-            );
-
-        }
-        else if constexpr ( std::is_same_v<NumT, std::complex<float>> ) {
-            std::complex<float> alpha(1, 0);
-            std::complex<float> beta(0, 0);
-            cblas_cgemm(
-                CblasRowMajor, 
-                CblasNoTrans, 
-                CblasNoTrans, 
-                dim, dim, dim, 
-                (const void*)&alpha, 
-                a.data(), 
-                dim,
-                b.data(),
-                dim,
-                (const void*)&beta,
-                out.data(),
-                dim
-            );
-
-        }
-        else if constexpr ( std::is_same_v<NumT, std::complex<double>> ) {
-            std::complex<double> alpha(1, 0);
-            std::complex<double> beta(0, 0);
-            cblas_cgemm(
-                CblasRowMajor, 
-                CblasNoTrans, 
-                CblasNoTrans, 
-                dim, dim, dim, 
-                (const void*)&alpha, 
-                a.data(), 
-                dim,
-                b.data(),
-                dim,
-                (const void*)&beta,
-                out.data(),
-                dim
-            );
-
-        } 
-    }
-
-    template <class NumT>
-    void manual_matmul(const MatrixView<NumT>& a, const MatrixView<NumT>& b, MatrixView<NumT>& out) {
-        size_t dim = a.dim();
-
-        for (size_t i = 0; i < dim; ++i) {
-            for (size_t j = 0; j < dim; ++j) {
-                out[i, j] = 0;
-
-                for (size_t k = 0; k < dim; ++k) out[i, j] += a[i, k] * b[k, j];
-            }
-        }
-
-    }
-    
-    template <class NumT>
-    void dim2_matmul(const MatrixView<NumT>& a, const MatrixView<NumT>& b, MatrixView<NumT>& out) {
-        out[0, 0] = a[0, 0] * b[0, 0] + a[0, 1] * b[1, 0];
-        out[0, 1] = a[0, 0] * b[0, 1] + a[0, 1] * b[1, 1];
-        out[1, 0] = a[1, 0] * b[0, 0] + a[1, 1] * b[1, 0];
-        out[1, 1] = a[1, 0] * b[0, 1] + a[1, 1] * b[1, 1];
-    }
-
-    template <class NumT>
+    template <class NumT, MatrixPolicy MatPolicyT>
     class MatrixSpan {
     protected:
         NumT* m_data;
@@ -440,16 +480,18 @@ namespace Magnus {
         size_t m_len;
 
     public:
+        using matrix_policy_t = MatPolicyT;
+        using matrix_t = MatrixView<NumT, MatPolicyT>;
+
         MatrixSpan( NumT* data, size_t dim, size_t length ) : m_data(data), m_dim(dim), m_size(dim * dim), m_len(length) {}
-        
+
         size_t mat_dim() const { return m_dim; }
         size_t mat_size() const { return m_size; }
         size_t length() const { return m_len; }
         size_t size() const { return m_size * m_len; }
         bool empty() const { return m_len == 0; }
 
-        MatrixView<NumT> operator[](size_t i) { return MatrixView<NumT>( m_data + i * m_size, m_dim ); }
-        MatrixView<const NumT> operator[](size_t i) const { return MatrixView<const NumT>( m_data + i * m_size, m_dim ); }
+        matrix_t operator[](size_t i) { return matrix_t( m_data + i * m_size, m_dim ); }
 
         NumT* data() { return m_data; }
         const NumT* data() const { return m_data; }
@@ -460,8 +502,8 @@ namespace Magnus {
 
     };
 
-    template <class NumT, class AllocatorT = std::allocator<NumT>>
-    class DynMatrixSpan : public MatrixSpan<NumT>, private detail::alloc_holder<AllocatorT> {
+    template <class NumT, MatrixPolicy MatPolicyT, class AllocatorT = std::allocator<NumT>>
+    class DynMatrixSpan : public MatrixSpan<NumT, MatPolicyT>, private detail::alloc_holder<AllocatorT> {
         void reset() {
             if (this->m_data != nullptr) this->alloc.deallocate(this->m_data, this->size());
 
@@ -472,7 +514,7 @@ namespace Magnus {
         }
 
     public:
-        using Base = MatrixSpan<NumT>;
+        using Base = MatrixSpan<NumT, MatPolicyT>;
         using AllocBase = detail::alloc_holder<AllocatorT>;
 
         DynMatrixSpan(size_t dim, size_t length, const AllocatorT& alloc = AllocatorT()) : Base(nullptr, dim, length), AllocBase(alloc) {

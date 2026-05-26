@@ -26,6 +26,9 @@ size_t max_order() {
     return GLTable::get()->max_order();
 }
 
+using PyMatrixT = Magnus::FixedDimPolicy<double, 2>;
+using PyIntT = Magnus::BooleIntegrator<double, PyMatrixT>;
+
 template <class NumT>
 CArray<NumT> magnus_one( size_t n, CArray_Coercible<NumT> data, double t0, double tf ) {
     auto info = data.request();
@@ -43,18 +46,19 @@ CArray<NumT> magnus_one( size_t n, CArray_Coercible<NumT> data, double t0, doubl
     CArray<NumT> out({info.shape[1], info.shape[2]});
     auto out_info = out.request();
 
-    Magnus::MatrixSpan<NumT> data_view((NumT*)(info.ptr), dim, n_samples );
-    Magnus::MatrixView<NumT> out_view((NumT*)(out_info.ptr), dim);
+    typename PyIntT::matrix_span_t data_view((NumT*)(info.ptr), dim, n_samples );
+    typename PyIntT::matrix_t out_view((NumT*)(out_info.ptr), dim);
 
     {
         py::gil_scoped_release release;
-        ::magnus_one<StandardPolicy<NumT>>(
+        Magnus::one<PyIntT>(
             out_view,
             n,
             data_view,
             t0, tf
         );
     }
+
 
     return out;
 }
@@ -76,12 +80,12 @@ CArray<NumT> magnus_many( size_t n, CArray_Coercible<NumT> data, double t0, doub
     CArray<NumT> out({n, dim, dim});
     auto out_info = out.request();
 
-    Magnus::MatrixSpan<NumT> data_view((NumT*)(info.ptr), dim, n_samples );
-    Magnus::MatrixSpan<NumT> out_view((NumT*)(out_info.ptr), dim, n);
+    typename PyIntT::matrix_span_t data_view((NumT*)(info.ptr), dim, n_samples );
+    typename PyIntT::matrix_span_t out_view((NumT*)(out_info.ptr), dim, n);
 
     {
         py::gil_scoped_release release;
-        ::magnus_many<StandardPolicy<NumT>>(
+        Magnus::many<PyIntT>(
             out_view,
             data_view,
             t0, tf
@@ -108,12 +112,12 @@ CArray<NumT> magnus_sum( size_t n, CArray_Coercible<NumT> data, double t0, doubl
     CArray<NumT> out({dim, dim});
     auto out_info = out.request();
 
-    Magnus::MatrixSpan<NumT> data_view((NumT*)(info.ptr), dim, n_samples );
-    Magnus::MatrixView<NumT> out_view((NumT*)(out_info.ptr), dim);
+    typename PyIntT::matrix_span_t data_view((NumT*)(info.ptr), dim, n_samples );
+    typename PyIntT::matrix_t out_view((NumT*)(out_info.ptr), dim);
 
     {
         py::gil_scoped_release release;
-        ::magnus_sum<StandardPolicy<NumT>>(
+        Magnus::sum<PyIntT>(
             out_view,
             n,
             data_view,
@@ -127,7 +131,7 @@ CArray<NumT> magnus_sum( size_t n, CArray_Coercible<NumT> data, double t0, doubl
 }
 
 PYBIND11_MODULE(_core, m) {
-    GLTable::update(std::make_shared<StaticTable>(_binary_gl_nodes_bin_start));
+    Magnus::GLTable::update(std::make_shared<Magnus::StaticTable>(_binary_gl_nodes_bin_start));
     m.doc() = "Python bindings for the magnus C++ library";
     m.def("max_order", &Magnus::detail::max_order, "Return the maximum built-in Gauss-Legendre order");
     m.def(

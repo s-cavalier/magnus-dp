@@ -23,7 +23,7 @@ add_custom_command(
 )
 
 add_library(magnus_core STATIC
-    src/integrate.cpp
+    src/gaussLegendre.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.o
 )
 
