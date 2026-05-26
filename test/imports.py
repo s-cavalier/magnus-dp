@@ -67,7 +67,7 @@ def omega2_bruteforce(A, t0, tf, sample_len, dtype=np.float64):
 
 T = 1
 
-n_samples = 1025
+n_samples = 257
 t_samples = np.linspace(0, T, n_samples)
 a_samples = np.array([Y(t) for t in t_samples])
 
@@ -79,9 +79,9 @@ print(f"Samples: {n_samples}")
 print(f"SciPy solve_ivp runtime: {ivp_time:.6f}s")
 print("order | magnus_sum | expm      | total     | speedup vs ivp | max abs err")
 
-for n_order in [8, 10, 12, 14, 16]:
+for n_order in [8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]:
     magnus_time, omega = median_runtime(
-        lambda: magnus.magnus_sum(n=n_order, data=a_samples, t0=0, tf=T)
+        lambda: magnus.sum(n=n_order, data=a_samples, t0=0, tf=T)
     )
 
     expm_time, exp_res = median_runtime(lambda: expm(omega))

@@ -135,7 +135,7 @@ PYBIND11_MODULE(_core, m) {
     m.doc() = "Python bindings for the magnus C++ library";
     m.def("max_order", &Magnus::detail::max_order, "Return the maximum built-in Gauss-Legendre order");
     m.def(
-        "magnus_one", 
+        "one", 
         &Magnus::detail::magnus_one<double>, 
         py::arg("n"),
         py::arg("data"),
@@ -144,7 +144,7 @@ PYBIND11_MODULE(_core, m) {
         "Compute exactly the nth term of the Magnus term. Saves on some space and runtime."
     );
     m.def(
-        "magnus_many", 
+        "many", 
         &Magnus::detail::magnus_many<double>, 
         py::arg("n"),
         py::arg("data"),
@@ -153,7 +153,7 @@ PYBIND11_MODULE(_core, m) {
         "Compute all terms from 1 to n of the Magnus expansion in one run, reusing intermediate steps."
     );
     m.def(
-        "magnus_sum", 
+        "sum", 
         &Magnus::detail::magnus_sum<double>, 
         py::arg("n"),
         py::arg("data"),

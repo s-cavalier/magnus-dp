@@ -10,6 +10,12 @@
 #include <string>
 #include <concepts>
 
+/* 
+Possible TODO:
+Use __restrict__ on some of the pointers for some speedup
+*/
+
+
 namespace Magnus {
 
     template <class T>

@@ -49,6 +49,7 @@ if(MAGNUS_BUILD_MAIN)
     target_compile_options(magnus PRIVATE
         -O3
         -march=native
+        -fno-omit-frame-pointer
     )
     target_link_libraries(magnus PRIVATE magnus_core)
 endif()
