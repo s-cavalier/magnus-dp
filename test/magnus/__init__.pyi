@@ -3,5 +3,11 @@ import numpy as np
 def max_order() -> int: 
     """Specifies the current max Legendre-Gauss degree available."""
 
-def magnus_f64(n: int, data: np.ndarray, t0: float, tf: float) -> np.ndarray:
+def magnus_one(n: int, data: np.ndarray, t0: float, tf: float) -> np.ndarray:
     """Compute magnus expansion order n using discretizations on data."""
+
+def magnus_many(n: int, data: np.ndarray, t0: float, tf: float) -> np.ndarray:
+    """Compute magnus expansion order 1 through n, reusing intermediary data."""
+
+def magnus_sum(n: int, data: np.ndarray, t0: float, tf: float) -> np.ndarray:
+    """Compute the sum of Magnus expansion orders 1 through n."""
