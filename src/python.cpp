@@ -26,7 +26,7 @@ size_t max_order() {
     return GLTable::get()->max_order();
 }
 
-using PyMatrixT = Magnus::FixedDimPolicy<double, 2>;
+using PyMatrixT = Magnus::ManualPolicy<double>;
 using PyIntT = Magnus::BooleIntegrator<double, PyMatrixT>;
 
 template <class NumT>
