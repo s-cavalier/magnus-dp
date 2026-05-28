@@ -26,8 +26,9 @@ size_t max_order() {
     return GLTable::get()->max_order();
 }
 
-using PyMatrixT = Magnus::ManualPolicy<double>;
-using PyIntT = Magnus::BooleIntegrator<double, PyMatrixT>;
+using NumericT = double;
+using PyMatrixT = Magnus::ManualPolicy<NumericT>;
+using PyIntT = Magnus::BooleIntegrator<NumericT, PyMatrixT>;
 
 template <class NumT>
 CArray<NumT> magnus_one( size_t n, CArray_Coercible<NumT> data, double t0, double tf ) {
