@@ -21,6 +21,7 @@ namespace Magnus {
         requires std::same_as<typename T::matrix_policy_t::numeric_t, typename T::numeric_t>;
 
         { T::divisibility_requirement() } -> std::same_as<size_t>;
+        { T::memory_requirement() } -> std::same_as<size_t>;
 
         { T( size_t{}, alloc ) };
         { integrator.prefix( data, double{} ) } -> std::same_as<void>;
@@ -40,6 +41,7 @@ namespace Magnus {
         using matrix_span_t = MatrixSpan<NumT, MatPolicyT>;
         
         static constexpr size_t divisibility_requirement() { return 1; }
+        static constexpr size_t memory_requirement() { return 1; }
 
         DefaultIntegrator( size_t dim, const AllocatorT& alloc = AllocatorT() ) : tmp(dim, alloc) {}
 
@@ -70,6 +72,7 @@ namespace Magnus {
         using matrix_span_t = MatrixSpan<NumT, MatPolicyT>;
 
         static constexpr size_t divisibility_requirement() { return 2; }
+        static constexpr size_t memory_requirement() { return 1; }
 
         TrapezoidalIntegrator(size_t dim, const AllocatorT& alloc = AllocatorT()) : tmp(dim, alloc) {}
 
@@ -110,6 +113,7 @@ namespace Magnus {
         using matrix_span_t = MatrixSpan<NumT, MatPolicyT>;
 
         static constexpr size_t divisibility_requirement() { return 2; }
+        static constexpr size_t memory_requirement() { return 3; }
 
         SimpsonIntegrator(size_t dim, const AllocatorT& alloc = AllocatorT()) :
             scratch(dim, 3, alloc) {}
@@ -184,6 +188,7 @@ namespace Magnus {
         using matrix_span_t = MatrixSpan<NumT, MatPolicyT>;
 
         static constexpr size_t divisibility_requirement() { return 4; }
+        static constexpr size_t memory_requirement() { return 5; }
 
         BooleIntegrator(size_t dim, const AllocatorT& alloc = AllocatorT()) :
             scratch(dim, 5, alloc) {}

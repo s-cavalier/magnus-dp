@@ -1,6 +1,8 @@
 #include "integrate.hpp"
 #include "matrix.hpp"
 #include "magnus.hpp"
+#include "memorybuffer.hpp"
+#include "dispatcher.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -22,13 +24,22 @@ using CArray = py::array_t<NumT, py::array::c_style>;
 template <class NumT>
 using CArray_Coercible = py::array_t<NumT, py::array::c_style | py::array::forcecast>;
 
+Dispatch::Type from_dtype( const py::dtype& dt ) {
+    if ( dt.is( py::dtype::of<float>() ) ) return Dispatch::Type::R32;
+    if ( dt.is( py::dtype::of<double>() ) ) return Dispatch::Type::R64;
+    if ( dt.is( py::dtype::of<std::complex<float>>() ) ) return Dispatch::Type::C32;
+    if ( dt.is( py::dtype::of<std::complex<double>>() ) ) return Dispatch::Type::C64;
+
+    throw py::type_error("magnus package only supports dtypes float32, float64, complex32, complex64.");
+}
+
 size_t max_order() {
     return GLTable::get()->max_order();
 }
 
 using NumericT = double;
 using PyMatrixT = Magnus::ManualPolicy<NumericT>;
-using PyIntT = Magnus::BooleIntegrator<NumericT, PyMatrixT>;
+using PyIntT = Magnus::BooleIntegrator<NumericT, PyMatrixT, Magnus::MemoryBuffer::Allocator<NumericT>>;
 
 template <class NumT>
 CArray<NumT> magnus_one( size_t n, CArray_Coercible<NumT> data, double t0, double tf ) {
@@ -55,13 +66,18 @@ CArray<NumT> magnus_one( size_t n, CArray_Coercible<NumT> data, double t0, doubl
     typename PyIntT::matrix_span_t data_view((NumT*)(info.ptr), dim, n_samples );
     typename PyIntT::matrix_t out_view((NumT*)(out_info.ptr), dim);
 
+    Magnus::MemoryBuffer memory( 
+        (PyIntT::memory_requirement() * sizeof(NumT) + n_samples * sizeof(NumT)) * dim * dim
+    );
+
     {
         py::gil_scoped_release release;
         Magnus::one<PyIntT>(
             out_view,
             n,
             data_view,
-            t0, tf
+            t0, tf,
+            memory.get_allocator<NumT>()
         );
     }
 
@@ -93,13 +109,17 @@ CArray<NumT> magnus_many( size_t n, CArray_Coercible<NumT> data, double t0, doub
 
     typename PyIntT::matrix_span_t data_view((NumT*)(info.ptr), dim, n_samples );
     typename PyIntT::matrix_span_t out_view((NumT*)(out_info.ptr), dim, n);
+    Magnus::MemoryBuffer memory( 
+        (PyIntT::memory_requirement() * sizeof(NumT) + n_samples * sizeof(NumT)) * dim * dim
+    );
 
     {
         py::gil_scoped_release release;
         Magnus::many<PyIntT>(
             out_view,
             data_view,
-            t0, tf
+            t0, tf,
+            memory.get_allocator<NumT>()
         );
     }
 
@@ -131,13 +151,18 @@ CArray<NumT> magnus_sum( size_t n, CArray_Coercible<NumT> data, double t0, doubl
     typename PyIntT::matrix_span_t data_view((NumT*)(info.ptr), dim, n_samples );
     typename PyIntT::matrix_t out_view((NumT*)(out_info.ptr), dim);
 
+    Magnus::MemoryBuffer memory( 
+        (PyIntT::memory_requirement() * sizeof(NumT) + n_samples * sizeof(NumT)) * dim * dim
+    );
+
     {
         py::gil_scoped_release release;
         Magnus::sum<PyIntT>(
             out_view,
             n,
             data_view,
-            t0, tf
+            t0, tf,
+            memory.get_allocator<NumT>()
         );
     }
 

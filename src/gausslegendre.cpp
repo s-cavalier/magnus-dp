@@ -1,4 +1,4 @@
-#include "gaussLegendre.hpp"
+#include "gausslegendre.hpp"
 #include <stdexcept>
 
 Magnus::GLTable::GLTable(size_t max_order) : m_max_order(max_order) {}
