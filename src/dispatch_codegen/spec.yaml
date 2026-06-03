@@ -1,0 +1,36 @@
+
+# Axis spec:
+# Any code must work within the context of only importing `manual_impls.hpp`.
+# A fun benefit of this is code specified via manual_impls.hpp can be used in requires/when expressions below.
+# Any code involving {num_t} will use a std::variant wrapper to properly dispatch, so num_t can be abstracted away.
+# Furthermore, all Parameter fields can be accessed via {field}. 
+#
+# axis: !Axis
+#   enum_t: str, Emitted enum type
+#   values: list of {id, cpp, optional<requires>}, specifying different possible dispatches
+#     id: str, specifies the name of the enum
+#     cpp: str, specifies the C++ dispatch routine
+#     optional<requires>: str | None, if specified, is an expression declaring a mandatory condition. An exception is thrown if this fails.
+#   select: list of { use, optional<when> }, specifies the deduction order if user does not specify at call-site. Goes top-down, follows a if-else setup (for example, the last `use` does not need a `when`, but every other `use` needs a `when` unless a `requires` is defined). Must be the last item defined in an axis.
+#     use: str, specifies the id to dispatch to if `when` is valid. Must be a previously specified id, will otherwise throw.
+#     when: optional<str>, specifies an expression declaring if it should be selected. If a requires expression exists for id, it will be included as part of the deduction rules, so respecifying the same expr as in `requires` is okay, but unnecessary (will result in ( (requires_expr) && (when_expr) )). Thus if a requires exist, a `when` can be ignored. Similarly, if the last item, a `when` can be ignored. If the last item does not have a `when`, there will be a C++ exception thrown if nothing is valid.
+
+axes:
+  matrix_policy: !Axis
+    enum_t: MatrixPolicy
+    values: 
+      - id: Fixed2
+        cpp: "Magnus::FixedDimPolicy<{num_t}, 2>"
+        requires: 'params.dim == 2'
+      - id: Manual
+        cpp: "Magnus::ManualPolicy<{num_t}>"
+      - id: Blas
+        cpp: "Magnus::BlasPolicy<{num_t}>"
+
+    select:
+    - use: Fixed2
+    - use: Manual
+      when: "params.dim < 64"
+    - use: Blas
+
+          

@@ -3,6 +3,5 @@ build
 test/magnus/*.so
 *.bin
 *.pdf
-.vscode/*
-.vscode
 test/magnus/__pycache__
+.*
