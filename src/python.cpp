@@ -1,13 +1,14 @@
-#include "integrate.hpp"
-#include "matrix.hpp"
-#include "magnus.hpp"
-#include "memorybuffer.hpp"
-#include "dispatcher.hpp"
+#include "backendcomposer.hpp"
+#include "gausslegendre.hpp"
+#include "integratebackends.hpp"
+#include "matrixbackends.hpp"
 
-#include <algorithm>
+#include <complex>
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
@@ -22,185 +23,205 @@ template <class NumT>
 using CArray = py::array_t<NumT, py::array::c_style>;
 
 template <class NumT>
-using CArray_Coercible = py::array_t<NumT, py::array::c_style | py::array::forcecast>;
-
-Dispatch::Type from_dtype( const py::dtype& dt ) {
-    if ( dt.is( py::dtype::of<float>() ) ) return Dispatch::Type::R32;
-    if ( dt.is( py::dtype::of<double>() ) ) return Dispatch::Type::R64;
-    if ( dt.is( py::dtype::of<std::complex<float>>() ) ) return Dispatch::Type::C32;
-    if ( dt.is( py::dtype::of<std::complex<double>>() ) ) return Dispatch::Type::C64;
-
-    throw py::type_error("magnus package only supports dtypes float32, float64, complex32, complex64.");
-}
+using CArrayCoercible = py::array_t<NumT, py::array::c_style | py::array::forcecast>;
 
 size_t max_order() {
     return GLTable::get()->max_order();
 }
 
-using NumericT = double;
-using PyMatrixT = Magnus::ManualPolicy<NumericT>;
-using PyIntT = Magnus::BooleIntegrator<NumericT, PyMatrixT, Magnus::MemoryBuffer::Allocator<NumericT>>;
-
-template <class NumT>
-CArray<NumT> magnus_one( size_t n, CArray_Coercible<NumT> data, double t0, double tf ) {
-    auto info = data.request();
-    
-    if ( info.ndim != 3 ) throw py::value_error("data must have size (samples, dim, dim)");
-
-    size_t n_samples = (size_t)(info.shape[0]);
-    size_t dim = (size_t)(info.shape[1]);
-
-    if (n_samples < 16) throw py::value_error("data must have at least 16 samples");
-    if ( (n_samples - 1) % PyIntT::divisibility_requirement() != 0 ) {
-        std::string err_msg = "number of samples - 1 (i.e., total number of intervals) must be divisible by ";
-        err_msg += std::to_string(PyIntT::divisibility_requirement());
-        throw py::value_error(err_msg);
-    }
-    if (dim == 0 || info.shape[2] != info.shape[1]) throw py::value_error("data must contain square matrices");
-
-    if ( (n + 3) / 2 >= max_order() ) throw py::value_error("Current GL table is not large enough for given n");
-
-    CArray<NumT> out({info.shape[1], info.shape[2]});
-    auto out_info = out.request();
-
-    typename PyIntT::matrix_span_t data_view((NumT*)(info.ptr), dim, n_samples );
-    typename PyIntT::matrix_t out_view((NumT*)(out_info.ptr), dim);
-
-    Magnus::MemoryBuffer memory( 
-        (PyIntT::memory_requirement() * sizeof(NumT) + n_samples * sizeof(NumT)) * dim * dim
-    );
-
-    {
-        py::gil_scoped_release release;
-        Magnus::one<PyIntT>(
-            out_view,
-            n,
-            data_view,
-            t0, tf,
-            memory.get_allocator<NumT>()
-        );
+void validate_input_shape(size_t n, const py::buffer_info& info) {
+    if (n == 0) {
+        throw py::value_error("n must be at least 1");
     }
 
+    if (info.ndim != 3) {
+        throw py::value_error("data must have shape (samples, dim, dim)");
+    }
 
-    return out;
+    if (info.shape[0] < 2) {
+        throw py::value_error("data must contain at least two samples");
+    }
+
+    if (info.shape[1] <= 0 || info.shape[2] != info.shape[1]) {
+        throw py::value_error("data must contain square matrices");
+    }
 }
 
-template <class NumT>
-CArray<NumT> magnus_many( size_t n, CArray_Coercible<NumT> data, double t0, double tf ) {
-    auto info = data.request();
-    
-    if ( info.ndim != 3 ) throw py::value_error("data must have size (samples, dim, dim)");
-
-    size_t n_samples = (size_t)(info.shape[0]);
-    size_t dim = (size_t)(info.shape[1]);
-
-    if (n_samples < 16) throw py::value_error("data must have at least 16 samples");
-    if ( (n_samples - 1) % PyIntT::divisibility_requirement() != 0 ) {
-        std::string err_msg = "number of samples - 1 (i.e., total number of intervals) must be divisible by ";
-        err_msg += std::to_string(PyIntT::divisibility_requirement());
-        throw py::value_error(err_msg);
+std::vector<py::ssize_t> output_shape(
+    Dispatch::KernelOp op,
+    size_t n,
+    py::ssize_t dim
+) {
+    if (op == Dispatch::KernelOp::MANY) {
+        return {static_cast<py::ssize_t>(n), dim, dim};
     }
-    if (dim == 0 || info.shape[2] != info.shape[1]) throw py::value_error("data must contain square matrices");
 
-    if ( (n + 3) / 2 >= max_order() ) throw py::value_error("Current GL table is not large enough for given n");
+    return {dim, dim};
+}
 
-    CArray<NumT> out({n, dim, dim});
-    auto out_info = out.request();
+template <Numeric NumT>
+py::array run_typed(
+    size_t n,
+    py::array data,
+    double t0,
+    double tf,
+    Dispatch::KernelOp op,
+    std::string_view matrix_backend,
+    std::string_view integrator
+) {
+    CArrayCoercible<NumT> typed = CArrayCoercible<NumT>::ensure(data);
+    if (!typed) {
+        throw py::type_error("could not convert data to the selected numeric dtype");
+    }
 
-    typename PyIntT::matrix_span_t data_view((NumT*)(info.ptr), dim, n_samples );
-    typename PyIntT::matrix_span_t out_view((NumT*)(out_info.ptr), dim, n);
-    Magnus::MemoryBuffer memory( 
-        (PyIntT::memory_requirement() * sizeof(NumT) + n_samples * sizeof(NumT)) * dim * dim
-    );
+    py::buffer_info in_info = typed.request();
+    validate_input_shape(n, in_info);
+
+    const size_t samples = static_cast<size_t>(in_info.shape[0]);
+    const size_t dim = static_cast<size_t>(in_info.shape[1]);
+
+    CArray<NumT> out(output_shape(op, n, in_info.shape[1]));
+    py::buffer_info out_info = out.request();
+
+    Params params{
+        Params::num_data<NumT>{
+            static_cast<NumT*>(in_info.ptr),
+            static_cast<NumT*>(out_info.ptr)
+        },
+        n,
+        dim,
+        samples,
+        t0,
+        tf
+    };
+
+    size_t num_idx = NumBackends::resolve(type_name_v<NumT>);
+    size_t mat_idx = MatrixBackends::resolve(matrix_backend);
+    size_t int_idx = IntegratorBackends::resolve(integrator);
+
+    std::unique_ptr<KernelPlan> plan = make_plan(params, num_idx, mat_idx, int_idx);
 
     {
         py::gil_scoped_release release;
-        Magnus::many<PyIntT>(
-            out_view,
-            data_view,
-            t0, tf,
-            memory.get_allocator<NumT>()
-        );
+        plan->run(op);
     }
 
     return out;
 }
 
-template <class NumT>
-CArray<NumT> magnus_sum( size_t n, CArray_Coercible<NumT> data, double t0, double tf ) {
-    auto info = data.request();
-    
-    if ( info.ndim != 3 ) throw py::value_error("data must have size (samples, dim, dim)");
+py::array run(
+    size_t n,
+    py::array data,
+    double t0,
+    double tf,
+    Dispatch::KernelOp op,
+    const std::string& matrix_backend,
+    const std::string& integrator
+) {
+    py::dtype dtype = data.dtype();
 
-    size_t n_samples = (size_t)(info.shape[0]);
-    size_t dim = (size_t)(info.shape[1]);
-
-    if (n_samples < 16) throw py::value_error("data must have at least 16 samples");
-    if ( (n_samples - 1) % PyIntT::divisibility_requirement() != 0 ) {
-        std::string err_msg = "number of samples - 1 (i.e., total number of intervals) must be divisible by ";
-        err_msg += std::to_string(PyIntT::divisibility_requirement());
-        throw py::value_error(err_msg);
+    if (dtype.is(py::dtype::of<f32>())) {
+        return run_typed<f32>(n, data, t0, tf, op, matrix_backend, integrator);
     }
-    if (dim == 0 || info.shape[2] != info.shape[1]) throw py::value_error("data must contain square matrices");
 
-    if ( (n + 3) / 2 >= max_order() ) throw py::value_error("Current GL table is not large enough for given n");
+    if (dtype.is(py::dtype::of<f64>())) {
+        return run_typed<f64>(n, data, t0, tf, op, matrix_backend, integrator);
+    }
 
-    CArray<NumT> out({dim, dim});
-    auto out_info = out.request();
+    if (dtype.is(py::dtype::of<c32>())) {
+        return run_typed<c32>(n, data, t0, tf, op, matrix_backend, integrator);
+    }
 
-    typename PyIntT::matrix_span_t data_view((NumT*)(info.ptr), dim, n_samples );
-    typename PyIntT::matrix_t out_view((NumT*)(out_info.ptr), dim);
+    if (dtype.is(py::dtype::of<c64>())) {
+        return run_typed<c64>(n, data, t0, tf, op, matrix_backend, integrator);
+    }
 
-    Magnus::MemoryBuffer memory( 
-        (PyIntT::memory_requirement() * sizeof(NumT) + n_samples * sizeof(NumT)) * dim * dim
+    throw py::type_error(
+        "magnus only supports dtypes float32, float64, complex64, and complex128"
     );
+}
 
-    {
-        py::gil_scoped_release release;
-        Magnus::sum<PyIntT>(
-            out_view,
-            n,
-            data_view,
-            t0, tf,
-            memory.get_allocator<NumT>()
-        );
-    }
+py::array magnus_one(
+    size_t n,
+    py::array data,
+    double t0,
+    double tf,
+    const std::string& matrix_backend,
+    const std::string& integrator
+) {
+    return run(n, data, t0, tf, Dispatch::KernelOp::ONE, matrix_backend, integrator);
+}
 
-    return out;
+py::array magnus_many(
+    size_t n,
+    py::array data,
+    double t0,
+    double tf,
+    const std::string& matrix_backend,
+    const std::string& integrator
+) {
+    return run(n, data, t0, tf, Dispatch::KernelOp::MANY, matrix_backend, integrator);
+}
+
+py::array magnus_sum(
+    size_t n,
+    py::array data,
+    double t0,
+    double tf,
+    const std::string& matrix_backend,
+    const std::string& integrator
+) {
+    return run(n, data, t0, tf, Dispatch::KernelOp::SUM, matrix_backend, integrator);
 }
 
 }
 
 PYBIND11_MODULE(_core, m) {
-    Magnus::GLTable::update(std::make_shared<Magnus::StaticTable>(_binary_gl_nodes_bin_start));
-    m.doc() = "Python bindings for the magnus C++ library";
-    m.def("max_order", &Magnus::detail::max_order, "Return the maximum built-in Gauss-Legendre order");
-    m.def(
-        "one", 
-        &Magnus::detail::magnus_one<double>, 
-        py::arg("n"),
-        py::arg("data"),
-        py::arg("t0"),
-        py::arg("tf"),
-        "Compute exactly the nth term of the Magnus term. Saves on some space and runtime."
-    );
-    m.def(
-        "many", 
-        &Magnus::detail::magnus_many<double>, 
-        py::arg("n"),
-        py::arg("data"),
-        py::arg("t0"),
-        py::arg("tf"),
-        "Compute all terms from 1 to n of the Magnus expansion in one run, reusing intermediate steps."
-    );
-    m.def(
-        "sum", 
-        &Magnus::detail::magnus_sum<double>, 
-        py::arg("n"),
-        py::arg("data"),
-        py::arg("t0"),
-        py::arg("tf"),
-        "Compute the sum of Magnus expansion terms from 1 to n."
+    Magnus::GLTable::update(
+        std::make_shared<Magnus::StaticTable>(_binary_gl_nodes_bin_start)
     );
 
+    m.doc() = "Python bindings for the magnus C++ library";
+
+    m.def(
+        "max_order",
+        &Magnus::detail::max_order,
+        "Return the max available Gauss-Legendre order. Max magnus order is then any n satisfying (n + 3) / 2 >= max_order()"
+    );
+
+    m.def(
+        "one",
+        &Magnus::detail::magnus_one,
+        py::arg("n"),
+        py::arg("data"),
+        py::arg("t0"),
+        py::arg("tf"),
+        py::arg("matrix_backend") = "Auto",
+        py::arg("integrator") = "Auto",
+        "Compute exactly the nth term of the Magnus expansion."
+    );
+
+    m.def(
+        "many",
+        &Magnus::detail::magnus_many,
+        py::arg("n"),
+        py::arg("data"),
+        py::arg("t0"),
+        py::arg("tf"),
+        py::arg("matrix_backend") = "Auto",
+        py::arg("integrator") = "Auto",
+        "Compute all Magnus expansion terms from 1 to n."
+    );
+
+    m.def(
+        "sum",
+        &Magnus::detail::magnus_sum,
+        py::arg("n"),
+        py::arg("data"),
+        py::arg("t0"),
+        py::arg("tf"),
+        py::arg("matrix_backend") = "Auto",
+        py::arg("integrator") = "Auto",
+        "Compute the sum of Magnus expansion terms from 1 to n."
+    );
 }

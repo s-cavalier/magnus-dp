@@ -21,6 +21,7 @@ add_custom_command(
 
 add_library(magnus_core STATIC
     src/gausslegendre.cpp
+    src/backendcomposer.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.o
 )
 
@@ -34,7 +35,7 @@ set_source_files_properties(
 target_compile_features(magnus_core PUBLIC cxx_std_23)
 target_compile_options(magnus_core PUBLIC -O3 -march=native)
 target_include_directories(magnus_core PUBLIC src)
-target_link_libraries(magnus_core PUBLIC ${BLAS_LIBRARIES})
+target_link_libraries(magnus_core PUBLIC BLAS::BLAS)
 set_target_properties(magnus_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
@@ -67,8 +68,8 @@ target_compile_options(magnus_python PRIVATE
 set_target_properties(magnus_python PROPERTIES OUTPUT_NAME _core)
 
 add_custom_command(TARGET magnus_python POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/test/magnus"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/demo/magnus"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:magnus_python>
-        "${CMAKE_CURRENT_SOURCE_DIR}/test/magnus/$<TARGET_FILE_NAME:magnus_python>"
+        "${CMAKE_CURRENT_SOURCE_DIR}/demo/magnus/$<TARGET_FILE_NAME:magnus_python>"
 )

@@ -39,8 +39,8 @@ namespace Magnus {
             offset(0),
             owns(true) {}
 
-        MemoryBuffer(std::span<std::byte> ext)
-            : buf(ext.data()), capacity(ext.size()), offset(0), owns(false) {}
+        MemoryBuffer(std::span<std::byte> ext, bool owns = false)
+            : buf(ext.data()), capacity(ext.size()), offset(0), owns(owns) {}
 
         ~MemoryBuffer() {
             if (owns) std::free(buf);

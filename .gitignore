@@ -1,7 +1,8 @@
 build/*
 build
-test/magnus/*.so
 *.bin
 *.pdf
-test/magnus/__pycache__
 .*
+
+**/__pycache__
+**/*.so

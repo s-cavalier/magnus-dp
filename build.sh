@@ -1,9 +1,9 @@
 python gen_nodes.py 64
 git submodule update --init --recursive
-cmake -S . -B build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=TRUE -G Ninja
 (
     cd build
-    make
+    ninja -C build
 )
 (
     cd test
