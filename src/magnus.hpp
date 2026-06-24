@@ -2,8 +2,7 @@
 #define __MAGNUS_HPP__
 #include "matrix.hpp"
 #include "integrate.hpp"
-#include "gaussLegendre.hpp"
-#include <vector>
+#include "gausslegendre.hpp"
 
 namespace Magnus {
 
@@ -27,7 +26,7 @@ namespace Magnus {
         size_t sample_len = A.length();
         size_t total_data_size = matrix_size * sample_len;
         double dt = (tf - t0) / (sample_len - 1);
-        
+
         out.zero();
         
         Int integrator( mat_dim, alloc );
@@ -38,12 +37,12 @@ namespace Magnus {
         }
 
         // GL weights/nodes
-        GLTable::DataView view = GLTable::get()->get_order( (n + 3) / 2 );
+        auto gl_table = GLTable::get();
+        GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
 
         // DP buffer space
-        std::vector<NumT, AllocatorT> Y_storage(alloc);
-        Y_storage.resize( total_data_size );
-        NumT* Y_data = Y_storage.data();
+        typename Int::allocator_t usable_alloc = alloc;
+        NumT* Y_data = usable_alloc.allocate(total_data_size);
         MatrixSpanT Y( Y_data, mat_dim, sample_len );
 
         MatrixViewT temp = integrator.borrow_scratch();
@@ -72,6 +71,7 @@ namespace Magnus {
             integrator.sum(Y, out, final_scale);
         }
 
+        usable_alloc.deallocate(Y_data, total_data_size);
     }
 
     template <Integrator Int>
@@ -104,12 +104,12 @@ namespace Magnus {
         if ( n == 1 ) return;
 
         // GL weights/nodes
-        GLTable::DataView view = GLTable::get()->get_order( (n + 3) / 2 );
+        auto gl_table = GLTable::get();
+        GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
 
         // DP buffer space
-        std::vector<NumT, AllocatorT> Y_storage(alloc);
-        Y_storage.resize( total_data_size );
-        NumT* Y_data = Y_storage.data();
+        typename Int::allocator_t usable_alloc = alloc;
+        NumT* Y_data = usable_alloc.allocate(total_data_size);
         MatrixSpanT Y( Y_data, mat_dim, sample_len );
 
         MatrixViewT temp = integrator.borrow_scratch();
@@ -137,6 +137,8 @@ namespace Magnus {
                 integrator.sum(Y, term, final_scale);
             }   
         }
+
+        usable_alloc.deallocate(Y_data, total_data_size);
 
     }
 
@@ -169,12 +171,12 @@ namespace Magnus {
         if ( n == 1 ) return;
 
         // GL weights/nodes
-        GLTable::DataView view = GLTable::get()->get_order( (n + 3) / 2 );
+        auto gl_table = GLTable::get();
+        GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
 
         // DP buffer space
-        std::vector<NumT, AllocatorT> Y_storage(alloc);
-        Y_storage.resize( total_data_size );
-        NumT* Y_data = Y_storage.data();
+        typename Int::allocator_t usable_alloc = alloc;
+        NumT* Y_data = usable_alloc.allocate(total_data_size);
         MatrixSpanT Y( Y_data, mat_dim, sample_len );
 
         MatrixViewT temp = integrator.borrow_scratch();
@@ -202,6 +204,7 @@ namespace Magnus {
             }   
         }
 
+        usable_alloc.deallocate(Y_data, total_data_size);
     }
 
 }
