@@ -4,6 +4,11 @@ from typing import Any, Callable
 def max_order() -> int: 
     """Specifies the current max Legendre-Gauss degree available."""
 
+def replace_gl_table(max_order: int) -> None:
+    """
+    Generate and install a new Gauss-Legendre table through max_order.
+    """
+
 def one_s(
     n: int,
     data: np.ndarray,

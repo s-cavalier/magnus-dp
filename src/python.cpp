@@ -5,9 +5,11 @@
 
 #include <complex>
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <pybind11/numpy.h>
@@ -27,6 +29,85 @@ using CArrayCoercible = py::array_t<NumT, py::array::c_style | py::array::forcec
 
 size_t max_order() {
     return GLTable::get()->max_order();
+}
+
+size_t gl_entry_count(size_t max_order) {
+    if (max_order == 0) {
+        throw py::value_error("max_order must be at least 1");
+    }
+
+    size_t a = max_order;
+    size_t b = max_order + 1;
+
+    if (b == 0) {
+        throw py::value_error("max_order is too large");
+    }
+
+    if (a % 2 == 0) {
+        a /= 2;
+    } else {
+        b /= 2;
+    }
+
+    if (a != 0 && b > std::numeric_limits<size_t>::max() / a) {
+        throw py::value_error("max_order is too large");
+    }
+
+    return a * b;
+}
+
+std::vector<size_t> gl_offsets(size_t max_order) {
+    std::vector<size_t> offsets(max_order + 1);
+    size_t offset = 0;
+    offsets[0] = 0;
+
+    for (size_t order = 1; order <= max_order; ++order) {
+        offsets[order] = offset;
+        offset += order;
+    }
+
+    return offsets;
+}
+
+std::vector<double> copy_gl_array(
+    py::array data,
+    size_t expected_size,
+    std::string_view name
+) {
+    CArrayCoercible<double> typed = CArrayCoercible<double>::ensure(data);
+    if (!typed) {
+        throw py::type_error("GL data must be convertible to float64");
+    }
+
+    py::buffer_info info = typed.request();
+    if (info.ndim != 1 || static_cast<size_t>(info.shape[0]) != expected_size) {
+        throw py::value_error(
+            "GL values must have shape (" + std::to_string(expected_size) + ",)"
+        );
+    }
+
+    const double* ptr = static_cast<const double*>(info.ptr);
+    return {ptr, ptr + expected_size};
+}
+
+void replace_gl_table(
+    size_t max_order,
+    py::array weights,
+    py::array nodes
+) {
+    size_t expected_size = gl_entry_count(max_order);
+
+    std::vector<double> weight_values = copy_gl_array(weights, expected_size, "weights");
+    std::vector<double> node_values = copy_gl_array(nodes, expected_size, "nodes");
+
+    GLTable::update(
+        std::make_shared<OwningTable>(
+            max_order,
+            gl_offsets(max_order),
+            std::move(weight_values),
+            std::move(node_values)
+        )
+    );
 }
 
 void validate_input_shape(size_t n, const py::buffer_info& info) {
@@ -186,7 +267,16 @@ PYBIND11_MODULE(_core, m) {
     m.def(
         "max_order",
         &Magnus::detail::max_order,
-        "Return the max available Gauss-Legendre order. Max magnus order is then any n satisfying (n + 3) / 2 >= max_order()"
+        "Return the max available Gauss-Legendre order. Max magnus order is then any n satisfying (n + 3) / 2 <= max_order()."
+    );
+
+    m.def(
+        "_replace_gl_table",
+        &Magnus::detail::replace_gl_table,
+        py::arg("max_order"),
+        py::arg("weights"),
+        py::arg("nodes"),
+        "Replace the process-global Gauss-Legendre table from flattened float64 weights and nodes."
     );
 
     m.def(

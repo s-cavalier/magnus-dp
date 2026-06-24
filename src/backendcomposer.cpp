@@ -1,7 +1,10 @@
 #include "backendcomposer.hpp"
 
 std::unique_ptr<Magnus::KernelPlan> Magnus::make_plan(Params& p, size_t num_idx, size_t mat_idx, size_t int_idx) {
-    if ( (p.n + 3) / 2 >= GLTable::get()->max_order() ) throw std::invalid_argument("requested magnus order exceeds GL table. Consider providing a larger table.");
+    if ( p.n > 1 ) {
+        size_t required_order = (p.n + 3) / 2;
+        if ( required_order > GLTable::get()->max_order() ) throw std::invalid_argument("requested magnus order exceeds GL table. Consider providing a larger table.");
+    }
     
     return NumBackends::dispatch( num_idx, p, [&p, &mat_idx, &int_idx]<Dispatchable NumSpec>() -> std::unique_ptr<KernelPlan> {
         using NumT = typename NumSpec::type;

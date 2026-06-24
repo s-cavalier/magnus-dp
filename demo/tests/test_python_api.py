@@ -33,6 +33,7 @@ def assert_close(actual, expected):
 def test_sampled_api_exports_core_entrypoints():
     assert set(magnus.__all__) == {
         "max_order",
+        "replace_gl_table",
         "one_s",
         "many_s",
         "sum_s",
@@ -40,6 +41,7 @@ def test_sampled_api_exports_core_entrypoints():
         "many",
         "sum",
     }
+    assert callable(magnus.replace_gl_table)
     assert callable(magnus.one_s)
     assert callable(magnus.many_s)
     assert callable(magnus.sum_s)

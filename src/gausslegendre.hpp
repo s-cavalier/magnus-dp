@@ -1,11 +1,14 @@
 #ifndef __GAUSS_LEGENDRE_HPP__
 #define __GAUSS_LEGENDRE_HPP__
+#include <cstddef>
+#include <cstdint>
 #include <span>
 #include <utility>
 #include <memory>
 #include <atomic>
 #include <concepts>
 #include <algorithm>
+#include <vector>
 
 namespace Magnus {
 
@@ -88,16 +91,24 @@ namespace Magnus {
             nodes = (double*)(table + header->nodes_offset);
         }
 
-        DataView get_order(size_t n) const override {
-            size_t offset = offsets[n];
+        DataView get_order(size_t n) const override;
 
-            return DataView{
-                weights + offset,
-                nodes + offset,
-                n
-            };
-        }
+    };
 
+    class OwningTable final : public GLTable {
+        std::vector<size_t> offsets;
+        std::vector<double> weights;
+        std::vector<double> nodes;
+
+    public:
+        OwningTable(
+            size_t max_order,
+            std::vector<size_t> offsets,
+            std::vector<double> weights,
+            std::vector<double> nodes
+        );
+
+        DataView get_order(size_t n) const override;
     };
 
 }

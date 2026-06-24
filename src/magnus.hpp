@@ -37,7 +37,8 @@ namespace Magnus {
         }
 
         // GL weights/nodes
-        GLTable::DataView view = GLTable::get()->get_order( (n + 3) / 2 );
+        auto gl_table = GLTable::get();
+        GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
 
         // DP buffer space
         typename Int::allocator_t usable_alloc = alloc;
@@ -103,7 +104,8 @@ namespace Magnus {
         if ( n == 1 ) return;
 
         // GL weights/nodes
-        GLTable::DataView view = GLTable::get()->get_order( (n + 3) / 2 );
+        auto gl_table = GLTable::get();
+        GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
 
         // DP buffer space
         typename Int::allocator_t usable_alloc = alloc;
@@ -169,7 +171,8 @@ namespace Magnus {
         if ( n == 1 ) return;
 
         // GL weights/nodes
-        GLTable::DataView view = GLTable::get()->get_order( (n + 3) / 2 );
+        auto gl_table = GLTable::get();
+        GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
 
         // DP buffer space
         typename Int::allocator_t usable_alloc = alloc;
