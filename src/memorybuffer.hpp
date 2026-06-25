@@ -34,7 +34,7 @@ namespace Magnus {
 
     public:
         MemoryBuffer(size_t capacity)
-            : buf( (std::byte*)std::aligned_alloc(32, capacity) ),
+            : buf( new std::byte[capacity] ),
             capacity(capacity),
             offset(0),
             owns(true) {}
@@ -43,7 +43,7 @@ namespace Magnus {
             : buf(ext.data()), capacity(ext.size()), offset(0), owns(owns) {}
 
         ~MemoryBuffer() {
-            if (owns) std::free(buf);
+            if (owns) delete[] buf;
         }
 
         void reset() {
