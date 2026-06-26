@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 project(magnus LANGUAGES CXX)
 
 find_package(BLAS REQUIRED)
+find_package(TBB REQUIRED)
 
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.o
@@ -35,7 +36,7 @@ set_source_files_properties(
 target_compile_features(magnus_core PUBLIC cxx_std_23)
 target_compile_options(magnus_core PUBLIC -O3 -march=native)
 target_include_directories(magnus_core PUBLIC src)
-target_link_libraries(magnus_core PUBLIC BLAS::BLAS)
+target_link_libraries(magnus_core PUBLIC BLAS::BLAS TBB::tbb)
 set_target_properties(magnus_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)

@@ -52,6 +52,39 @@ def sum_s(
     t0 is the start time, tf is the end time.
     """
 
+def one_sc_s(
+    n: int,
+    data: np.ndarray,
+    t0: float,
+    tf: float,
+    integrator: str = "Auto",
+) -> np.ndarray:
+    """
+    Compute SpaceCurve Magnus expansion order n from 3-vector samples.
+    """
+
+def many_sc_s(
+    n: int,
+    data: np.ndarray,
+    t0: float,
+    tf: float,
+    integrator: str = "Auto",
+) -> np.ndarray:
+    """
+    Compute SpaceCurve Magnus expansion orders 1 through n from 3-vector samples.
+    """
+
+def sum_sc_s(
+    n: int,
+    data: np.ndarray,
+    t0: float,
+    tf: float,
+    integrator: str = "Auto",
+) -> np.ndarray:
+    """
+    Compute the sum of SpaceCurve Magnus expansion orders from 3-vector samples.
+    """
+
 def one(
     n: int,
     f: Callable[[np.ndarray], np.ndarray],
@@ -98,4 +131,49 @@ def sum(
 ) -> np.ndarray:
     """
     Compute the sum of Magnus expansion orders 1 through n by sampling f on evenly-spaced points.
+    """
+
+def one_sc(
+    n: int,
+    f: Callable[[np.ndarray], np.ndarray],
+    t0: float,
+    tf: float,
+    samples: int,
+    *,
+    dtype: Any = None,
+    vectorized: bool = True,
+    integrator: str = "Auto",
+) -> np.ndarray:
+    """
+    Compute SpaceCurve Magnus expansion order n by sampling an R -> R^3 function.
+    """
+
+def many_sc(
+    n: int,
+    f: Callable[[np.ndarray], np.ndarray],
+    t0: float,
+    tf: float,
+    samples: int,
+    *,
+    dtype: Any = None,
+    vectorized: bool = True,
+    integrator: str = "Auto",
+) -> np.ndarray:
+    """
+    Compute SpaceCurve Magnus expansion orders 1 through n by sampling an R -> R^3 function.
+    """
+
+def sum_sc(
+    n: int,
+    f: Callable[[np.ndarray], np.ndarray],
+    t0: float,
+    tf: float,
+    samples: int,
+    *,
+    dtype: Any = None,
+    vectorized: bool = True,
+    integrator: str = "Auto",
+) -> np.ndarray:
+    """
+    Compute the SpaceCurve Magnus expansion sum by sampling an R -> R^3 function.
     """

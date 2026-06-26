@@ -296,7 +296,8 @@ namespace Dispatch {
             // Internal Y buffer allocated by Magnus::one/many/sum only when n > 1.
             if (p.n > 1) scalar_count += p.samples * matrix_size;
 
-            return scalar_count * sizeof(typename Int::numeric_t);
+            static constexpr size_t SCRATCH = 512;
+            return scalar_count * sizeof(typename Int::numeric_t) + SCRATCH;
         }
 
         void run( Dispatch::KernelOp op ) override {

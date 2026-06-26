@@ -26,6 +26,27 @@ def matrix_value(t, dtype=np.float64):
     return matrix_values(np.asarray([t]), dtype=dtype)[0]
 
 
+def spacecurve_values(t, dtype=np.float64):
+    t = np.asarray(t)
+    out = np.empty((t.size, 3), dtype=dtype)
+    out[:, 0] = np.sin(1.3 * t) + 0.2 * t
+    out[:, 1] = np.cos(0.7 * t) - 0.1
+    out[:, 2] = 0.4 + t * t
+    return out
+
+
+def packed_spacecurve_values(t, dtype=np.float64):
+    values = spacecurve_values(t, dtype=dtype)
+    out = np.empty((values.shape[0], 4), dtype=dtype)
+    out[:, 0] = 0
+    out[:, 1:] = values
+    return out.reshape(values.shape[0], 2, 2)
+
+
+def spacecurve_value(t, dtype=np.float64):
+    return spacecurve_values(np.asarray([t]), dtype=dtype)[0]
+
+
 def assert_close(actual, expected):
     np.testing.assert_allclose(actual, expected, rtol=1e-11, atol=1e-12)
 
@@ -37,14 +58,23 @@ def test_sampled_api_exports_core_entrypoints():
         "one_s",
         "many_s",
         "sum_s",
+        "one_sc_s",
+        "many_sc_s",
+        "sum_sc_s",
         "one",
         "many",
         "sum",
+        "one_sc",
+        "many_sc",
+        "sum_sc",
     }
     assert callable(magnus.replace_gl_table)
     assert callable(magnus.one_s)
     assert callable(magnus.many_s)
     assert callable(magnus.sum_s)
+    assert callable(magnus.one_sc_s)
+    assert callable(magnus.many_sc_s)
+    assert callable(magnus.sum_sc_s)
 
 
 def test_vectorized_callable_api_matches_sampled_api():
@@ -129,6 +159,92 @@ def test_pointwise_callable_api_matches_sampled_api():
     assert_close(actual, expected)
 
 
+def test_spacecurve_vectorized_callable_api_matches_packed_sampled_api():
+    t0 = -0.25
+    tf = 1.25
+    samples = 9
+    n = 4
+    seen = []
+
+    def f(t):
+        seen.append(np.array(t, copy=True))
+        return spacecurve_values(t)
+
+    t = np.linspace(t0, tf, samples)
+    data = spacecurve_values(t)
+    packed = packed_spacecurve_values(t)
+
+    one = magnus.one_sc(
+        n,
+        f,
+        t0,
+        tf,
+        samples,
+        integrator="Riemann",
+    )
+    many = magnus.many_sc(
+        n,
+        f,
+        t0,
+        tf,
+        samples,
+        integrator="Riemann",
+    )
+    total = magnus.sum_sc(
+        n,
+        f,
+        t0,
+        tf,
+        samples,
+        integrator="Riemann",
+    )
+
+    assert len(seen) == 3
+    for values in seen:
+        np.testing.assert_array_equal(values, t)
+
+    assert one.shape == (3,)
+    assert many.shape == (n, 3)
+    assert total.shape == (3,)
+    assert_close(one, magnus.one_sc_s(n, data, t0, tf, "Riemann"))
+    assert_close(many, magnus.many_sc_s(n, data, t0, tf, "Riemann"))
+    assert_close(total, magnus.sum_sc_s(n, data, t0, tf, "Riemann"))
+    assert_close(
+        many,
+        magnus.many_s(n, packed, t0, tf, "SpaceCurve", "Riemann").reshape(n, 4)[:, 1:],
+    )
+
+
+def test_spacecurve_pointwise_callable_api_matches_sampled_api():
+    t0 = 0.0
+    tf = 2.0
+    samples = 9
+    n = 3
+    seen = []
+
+    def f(t):
+        assert isinstance(t, float)
+        seen.append(t)
+        return spacecurve_value(t)
+
+    t = np.linspace(t0, tf, samples)
+    data = spacecurve_values(t)
+
+    actual = magnus.sum_sc(
+        n,
+        f,
+        t0,
+        tf,
+        samples,
+        vectorized=False,
+        integrator="Trapezoid",
+    )
+    expected = magnus.sum_sc_s(n, data, t0, tf, "Trapezoid")
+
+    np.testing.assert_array_equal(seen, t)
+    assert_close(actual, expected)
+
+
 @pytest.mark.parametrize("dtype", [np.float32, np.float64, np.complex64, np.complex128])
 def test_callable_dtype_controls_sample_dtype(dtype):
     def f(t):
@@ -152,6 +268,31 @@ def test_callable_dtype_controls_sample_dtype(dtype):
 
     data = np.asarray(f(np.linspace(0.0, 1.0, 9)), dtype=dtype)
     expected = magnus.one_s(1, data, 0.0, 1.0, "Manual", "Riemann")
+    np.testing.assert_allclose(actual, expected)
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64, np.complex64, np.complex128])
+def test_spacecurve_callable_dtype_controls_sample_dtype(dtype):
+    def f(t):
+        data = spacecurve_values(t, dtype=np.float64)
+        if np.issubdtype(np.dtype(dtype), np.complexfloating):
+            data = data + 0.25j * data
+        return data
+
+    actual = magnus.one_sc(
+        1,
+        f,
+        0.0,
+        1.0,
+        9,
+        dtype=dtype,
+        integrator="Riemann",
+    )
+
+    assert actual.dtype == np.dtype(dtype)
+
+    data = np.asarray(f(np.linspace(0.0, 1.0, 9)), dtype=dtype)
+    expected = magnus.one_sc_s(1, data, 0.0, 1.0, "Riemann")
     np.testing.assert_allclose(actual, expected)
 
 
@@ -198,6 +339,20 @@ def test_callable_sample_count_is_validated_before_calling_function():
     assert not called
 
 
+def test_spacecurve_callable_sample_count_is_validated_before_calling_function():
+    called = False
+
+    def f(t):
+        nonlocal called
+        called = True
+        return spacecurve_values(t)
+
+    with pytest.raises(ValueError, match="samples must be at least 2"):
+        magnus.one_sc(1, f, 0.0, 1.0, 1)
+
+    assert not called
+
+
 @pytest.mark.parametrize(
     "bad_result",
     [
@@ -214,6 +369,22 @@ def test_callable_output_shape_is_validated(bad_result):
         magnus.one(1, f, 0.0, 1.0, 9)
 
 
+@pytest.mark.parametrize(
+    "bad_result",
+    [
+        np.zeros((9, 2), dtype=np.float64),
+        np.zeros((8, 3), dtype=np.float64),
+        np.zeros((9, 3, 1), dtype=np.float64),
+    ],
+)
+def test_spacecurve_callable_output_shape_is_validated(bad_result):
+    def f(t):
+        return bad_result
+
+    with pytest.raises(ValueError, match="shape"):
+        magnus.one_sc(1, f, 0.0, 1.0, 9)
+
+
 def test_sampled_api_still_validates_core_inputs():
     data = matrix_values(np.linspace(0.0, 1.0, 9))
 
@@ -222,3 +393,16 @@ def test_sampled_api_still_validates_core_inputs():
 
     with pytest.raises(TypeError, match="supports dtypes"):
         magnus.one_s(1, data.astype(np.int64), 0.0, 1.0)
+
+
+def test_spacecurve_sampled_api_still_validates_core_inputs():
+    data = spacecurve_values(np.linspace(0.0, 1.0, 9))
+
+    with pytest.raises(ValueError, match="n must be at least 1"):
+        magnus.one_sc_s(0, data, 0.0, 1.0)
+
+    with pytest.raises(TypeError, match="supports dtypes"):
+        magnus.one_sc_s(1, data.astype(np.int64), 0.0, 1.0)
+
+    with pytest.raises(ValueError, match="shape"):
+        magnus.one_sc_s(1, np.zeros((9, 4), dtype=np.float64), 0.0, 1.0)

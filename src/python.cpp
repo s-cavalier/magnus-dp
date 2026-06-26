@@ -128,6 +128,24 @@ void validate_input_shape(size_t n, const py::buffer_info& info) {
     }
 }
 
+void validate_spacecurve_input_shape(size_t n, const py::buffer_info& info) {
+    if (n == 0) {
+        throw py::value_error("n must be at least 1");
+    }
+
+    if (info.ndim != 2) {
+        throw py::value_error("data must have shape (samples, 3)");
+    }
+
+    if (info.shape[0] < 2) {
+        throw py::value_error("data must contain at least two samples");
+    }
+
+    if (info.shape[1] != 3) {
+        throw py::value_error("data must have shape (samples, 3)");
+    }
+}
+
 std::vector<py::ssize_t> output_shape(
     Dispatch::KernelOp op,
     size_t n,
@@ -138,6 +156,17 @@ std::vector<py::ssize_t> output_shape(
     }
 
     return {dim, dim};
+}
+
+std::vector<py::ssize_t> spacecurve_output_shape(
+    Dispatch::KernelOp op,
+    size_t n
+) {
+    if (op == Dispatch::KernelOp::MANY) {
+        return {static_cast<py::ssize_t>(n), 3};
+    }
+
+    return {3};
 }
 
 template <Numeric NumT>
@@ -190,6 +219,73 @@ py::array run_typed(
     return out;
 }
 
+template <Numeric NumT>
+py::array run_spacecurve_typed(
+    size_t n,
+    py::array data,
+    double t0,
+    double tf,
+    Dispatch::KernelOp op,
+    std::string_view integrator
+) {
+    CArrayCoercible<NumT> typed = CArrayCoercible<NumT>::ensure(data);
+    if (!typed) {
+        throw py::type_error("could not convert data to the selected numeric dtype");
+    }
+
+    py::buffer_info in_info = typed.request();
+    validate_spacecurve_input_shape(n, in_info);
+
+    const size_t samples = static_cast<size_t>(in_info.shape[0]);
+    const NumT* in = static_cast<const NumT*>(in_info.ptr);
+
+    std::unique_ptr<NumT[]> padded(new NumT[samples * 4]);
+    for (size_t i = 0; i < samples; ++i) {
+        padded[4 * i] = NumT{0};
+        padded[4 * i + 1] = in[3 * i];
+        padded[4 * i + 2] = in[3 * i + 1];
+        padded[4 * i + 3] = in[3 * i + 2];
+    }
+
+    size_t output_count = (op == Dispatch::KernelOp::MANY) ? n : 1;
+    std::unique_ptr<NumT[]> padded_out(new NumT[output_count * 4]);
+
+    CArray<NumT> out(spacecurve_output_shape(op, n));
+    py::buffer_info out_info = out.request();
+
+    Params params{
+        Params::num_data<NumT>{
+            padded.get(),
+            padded_out.get()
+        },
+        n,
+        2,
+        samples,
+        t0,
+        tf
+    };
+
+    size_t num_idx = NumBackends::resolve(type_name_v<NumT>);
+    size_t mat_idx = MatrixBackends::resolve("SpaceCurve");
+    size_t int_idx = IntegratorBackends::resolve(integrator);
+
+    std::unique_ptr<KernelPlan> plan = make_plan(params, num_idx, mat_idx, int_idx);
+
+    {
+        py::gil_scoped_release release;
+        plan->run(op);
+    }
+
+    NumT* out_data = static_cast<NumT*>(out_info.ptr);
+    for (size_t i = 0; i < output_count; ++i) {
+        out_data[3 * i] = padded_out[4 * i + 1];
+        out_data[3 * i + 1] = padded_out[4 * i + 2];
+        out_data[3 * i + 2] = padded_out[4 * i + 3];
+    }
+
+    return out;
+}
+
 py::array run(
     size_t n,
     py::array data,
@@ -215,6 +311,37 @@ py::array run(
 
     if (dtype.is(py::dtype::of<c64>())) {
         return run_typed<c64>(n, data, t0, tf, op, matrix_backend, integrator);
+    }
+
+    throw py::type_error(
+        "magnus only supports dtypes float32, float64, complex64, and complex128"
+    );
+}
+
+py::array run_spacecurve(
+    size_t n,
+    py::array data,
+    double t0,
+    double tf,
+    Dispatch::KernelOp op,
+    const std::string& integrator
+) {
+    py::dtype dtype = data.dtype();
+
+    if (dtype.is(py::dtype::of<f32>())) {
+        return run_spacecurve_typed<f32>(n, data, t0, tf, op, integrator);
+    }
+
+    if (dtype.is(py::dtype::of<f64>())) {
+        return run_spacecurve_typed<f64>(n, data, t0, tf, op, integrator);
+    }
+
+    if (dtype.is(py::dtype::of<c32>())) {
+        return run_spacecurve_typed<c32>(n, data, t0, tf, op, integrator);
+    }
+
+    if (dtype.is(py::dtype::of<c64>())) {
+        return run_spacecurve_typed<c64>(n, data, t0, tf, op, integrator);
     }
 
     throw py::type_error(
@@ -253,6 +380,36 @@ py::array magnus_sum(
     const std::string& integrator
 ) {
     return run(n, data, t0, tf, Dispatch::KernelOp::SUM, matrix_backend, integrator);
+}
+
+py::array magnus_spacecurve_one(
+    size_t n,
+    py::array data,
+    double t0,
+    double tf,
+    const std::string& integrator
+) {
+    return run_spacecurve(n, data, t0, tf, Dispatch::KernelOp::ONE, integrator);
+}
+
+py::array magnus_spacecurve_many(
+    size_t n,
+    py::array data,
+    double t0,
+    double tf,
+    const std::string& integrator
+) {
+    return run_spacecurve(n, data, t0, tf, Dispatch::KernelOp::MANY, integrator);
+}
+
+py::array magnus_spacecurve_sum(
+    size_t n,
+    py::array data,
+    double t0,
+    double tf,
+    const std::string& integrator
+) {
+    return run_spacecurve(n, data, t0, tf, Dispatch::KernelOp::SUM, integrator);
 }
 
 }
@@ -313,5 +470,38 @@ PYBIND11_MODULE(_core, m) {
         py::arg("matrix_backend") = "Auto",
         py::arg("integrator") = "Auto",
         "Compute the sum of Magnus expansion terms from 1 to n."
+    );
+
+    m.def(
+        "one_sc",
+        &Magnus::detail::magnus_spacecurve_one,
+        py::arg("n"),
+        py::arg("data"),
+        py::arg("t0"),
+        py::arg("tf"),
+        py::arg("integrator") = "Auto",
+        "Compute exactly the nth SpaceCurve Magnus expansion term from 3-vector samples."
+    );
+
+    m.def(
+        "many_sc",
+        &Magnus::detail::magnus_spacecurve_many,
+        py::arg("n"),
+        py::arg("data"),
+        py::arg("t0"),
+        py::arg("tf"),
+        py::arg("integrator") = "Auto",
+        "Compute SpaceCurve Magnus expansion terms from 1 to n from 3-vector samples."
+    );
+
+    m.def(
+        "sum_sc",
+        &Magnus::detail::magnus_spacecurve_sum,
+        py::arg("n"),
+        py::arg("data"),
+        py::arg("t0"),
+        py::arg("tf"),
+        py::arg("integrator") = "Auto",
+        "Compute the sum of SpaceCurve Magnus expansion terms from 3-vector samples."
     );
 }

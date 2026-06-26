@@ -27,6 +27,9 @@ namespace Magnus {
         { T::matmul( size_t{}, cm, cm, m ) } -> std::same_as<void>;
         { T::matadd( size_t{}, m, cm, double{} ) } -> std::same_as<void>;
         { T::matscale( size_t{}, m, double{} ) } -> std::same_as<void>;
+        { T::matcopy( size_t{}, cm, m ) } -> std::same_as<void>;
+        { T::matwcopy( size_t{}, cm, m ) } -> std::same_as<void>;
+        { T::matzero( size_t{}, m ) } -> std::same_as<void>;
     };
 
     template <class NumT>
@@ -37,6 +40,12 @@ namespace Magnus {
 
     template <class NumT>
     using MatScaleKernelT = void(&)(size_t, NumT*, double);
+
+    template <class NumT>
+    using MatCopyKernelT = void(&)(size_t, const NumT*, NumT*);
+
+    template <class NumT>
+    using MatZeroKernelT = void(&)(size_t, NumT*);
 
     template <class NumT, MatrixPolicy MatPolicyT>
     class MatrixView {
@@ -120,7 +129,7 @@ namespace Magnus {
 
         // Does NOT check for proper sizes.
         void copy_from(const MatrixView& other) {
-            std::copy_n( other.m_data, size(), m_data );
+            matrix_policy_t::matcopy( m_dim, other.m_data, m_data );
         };
 
         std::span<NumT> at(size_t i) {
@@ -182,7 +191,7 @@ namespace Magnus {
         }
 
         void zero() {
-            std::fill_n( m_data, size(), 0 );
+            matrix_policy_t::matzero( m_dim, m_data );
         }
 
         MatrixView& add( const MatrixView& other, double scalar = 1.0 ) {
@@ -302,7 +311,7 @@ namespace Magnus {
         const NumT* data() const { return m_data; }
 
         void copy_from( const MatrixSpan& other ) {
-            std::copy_n( other.m_data, m_len * m_size, m_data );
+            matrix_policy_t::matwcopy( m_size * m_len, other.m_data, m_data );
         }
 
     };

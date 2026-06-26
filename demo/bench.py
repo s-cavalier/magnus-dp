@@ -5,13 +5,13 @@ from time import perf_counter
 from scipy.linalg import expm
 from scipy.integrate import solve_ivp
 
+Z = np.array([[1, 0], [0, -1]])
+X = np.array([[0, 1], [1, 0]])
 def get_H_func(k, w0, epsilon, delta, v0, T0):
     """
     Returns a function H(t) for the extended RZ model.
     """
     # 1. Define Pauli matrices
-    Z = np.array([[1, 0], [0, -1]])
-    X = np.array([[0, 1], [1, 0]])
 
     # 2. Define Mk (k x k tridiagonal symmetric matrix)
     # Main diagonal 0, upper/lower diagonals 1
@@ -33,7 +33,8 @@ def get_H_func(k, w0, epsilon, delta, v0, T0):
 
     return H
 
-Y = get_H_func(k=3, w0=1.0, epsilon=0.1, delta=2.0, v0=0.5, T0=1.0)
+def Y(t):
+    return t * X + (1 - t) * Z
 
 def solve_matrix_ivp_at(coef, t, *, rtol=1e-10, atol=1e-12):
     y0 = np.asarray(coef(0.0), dtype=np.float64)
@@ -104,7 +105,7 @@ print("order | magnus_sum | expm      | total     | speedup vs ivp | max abs err
 
 for n_order in [6, 8, 10, 12, 14, 16, 18, 20, 22]:
     magnus_time, omega = median_runtime(
-        lambda: magnus.sum(n=n_order, data=a_samples, t0=0, tf=T)
+        lambda: magnus.sum_s(n=n_order, data=a_samples, t0=0, tf=T)
     )
 
     expm_time, exp_res = median_runtime(lambda: expm(omega))

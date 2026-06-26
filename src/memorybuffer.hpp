@@ -9,13 +9,15 @@
 
 namespace Magnus {
 
+    static constexpr size_t DEFAULT_ALIGNMENT = 32;
+
     class MemoryBuffer {
         std::byte* buf;
         size_t capacity;
         size_t offset;
         bool owns;
 
-        template <class T, size_t Alignment = alignof(T)> requires ( Alignment >= alignof(T) && ( ( Alignment & (Alignment - 1) ) == 0 ) )
+        template <class T, size_t Alignment = DEFAULT_ALIGNMENT> requires ( Alignment >= DEFAULT_ALIGNMENT && ( ( Alignment & (Alignment - 1) ) == 0 ) )
         T* alloc(size_t num) {
             if (num == 0) throw std::bad_alloc();
 
@@ -55,7 +57,7 @@ namespace Magnus {
         MemoryBuffer(MemoryBuffer&& other) = delete;
         MemoryBuffer& operator=(MemoryBuffer&& other) = delete;
 
-        template <class T, size_t Alignment = alignof(T)>
+        template <class T, size_t Alignment = DEFAULT_ALIGNMENT>
         class Allocator {
             friend class MemoryBuffer;
 
@@ -89,7 +91,7 @@ namespace Magnus {
             }
         };
 
-        template <class T, size_t Alignment = alignof(T)>
+        template <class T, size_t Alignment = DEFAULT_ALIGNMENT>
         Allocator<T, Alignment> get_allocator() {
             return Allocator<T, Alignment>(*this);
         }
