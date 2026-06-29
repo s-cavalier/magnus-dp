@@ -1,15 +1,11 @@
 #include "backendcomposer.hpp"
 #include "gausslegendre.hpp"
-#include "integratebackends.hpp"
-#include "matrixbackends.hpp"
 
 #include <complex>
-#include <cstddef>
 #include <limits>
 #include <memory>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
 
 #include <pybind11/numpy.h>
@@ -17,7 +13,11 @@
 
 namespace py = pybind11;
 
-extern "C" std::byte _binary_gl_nodes_bin_start[];
+#ifdef MAGNUS_ENABLE_JAX_FFI
+namespace Magnus::JaxFfi {
+void bind(py::module_& m);
+}
+#endif
 
 namespace Magnus::detail {
 
@@ -32,26 +32,17 @@ size_t max_order() {
 }
 
 size_t gl_entry_count(size_t max_order) {
-    if (max_order == 0) {
-        throw py::value_error("max_order must be at least 1");
-    }
+    if (max_order == 0) throw py::value_error("max_order must be at least 1");
 
     size_t a = max_order;
     size_t b = max_order + 1;
 
-    if (b == 0) {
-        throw py::value_error("max_order is too large");
-    }
+    if (b == 0) throw py::value_error("max_order is too large");
 
-    if (a % 2 == 0) {
-        a /= 2;
-    } else {
-        b /= 2;
-    }
+    if (a % 2 == 0) a /= 2;
+    else b /= 2;
 
-    if (a != 0 && b > std::numeric_limits<size_t>::max() / a) {
-        throw py::value_error("max_order is too large");
-    }
+    if (a != 0 && b > std::numeric_limits<size_t>::max() / a) throw py::value_error("max_order is too large");
 
     return a * b;
 }
@@ -75,16 +66,11 @@ std::vector<double> copy_gl_array(
     std::string_view name
 ) {
     CArrayCoercible<double> typed = CArrayCoercible<double>::ensure(data);
-    if (!typed) {
-        throw py::type_error("GL data must be convertible to float64");
-    }
+    if (!typed) throw py::type_error("GL data must be convertible to float64");
 
     py::buffer_info info = typed.request();
-    if (info.ndim != 1 || static_cast<size_t>(info.shape[0]) != expected_size) {
-        throw py::value_error(
-            "GL values must have shape (" + std::to_string(expected_size) + ",)"
-        );
-    }
+    if (info.ndim != 1 || static_cast<size_t>(info.shape[0]) != expected_size)
+        throw py::value_error("GL " + std::string(name) + " values must have shape ("+ std::to_string(expected_size) + ",)");
 
     const double* ptr = static_cast<const double*>(info.ptr);
     return {ptr, ptr + expected_size};
@@ -111,60 +97,27 @@ void replace_gl_table(
 }
 
 void validate_input_shape(size_t n, const py::buffer_info& info) {
-    if (n == 0) {
-        throw py::value_error("n must be at least 1");
-    }
-
-    if (info.ndim != 3) {
-        throw py::value_error("data must have shape (samples, dim, dim)");
-    }
-
-    if (info.shape[0] < 2) {
-        throw py::value_error("data must contain at least two samples");
-    }
-
-    if (info.shape[1] <= 0 || info.shape[2] != info.shape[1]) {
-        throw py::value_error("data must contain square matrices");
-    }
+    if (n == 0) throw py::value_error("n must be at least 1");
+    if (info.ndim != 3) throw py::value_error("data must have shape (samples, dim, dim)");
+    if (info.shape[0] < 2) throw py::value_error("data must contain at least two samples");
+    if (info.shape[1] <= 0 || info.shape[2] != info.shape[1]) throw py::value_error("data must contain square matrices");
 }
 
 void validate_spacecurve_input_shape(size_t n, const py::buffer_info& info) {
-    if (n == 0) {
-        throw py::value_error("n must be at least 1");
-    }
-
-    if (info.ndim != 2) {
-        throw py::value_error("data must have shape (samples, 3)");
-    }
-
-    if (info.shape[0] < 2) {
-        throw py::value_error("data must contain at least two samples");
-    }
-
-    if (info.shape[1] != 3) {
-        throw py::value_error("data must have shape (samples, 3)");
-    }
+    if (n == 0) throw py::value_error("n must be at least 1");
+    if (info.ndim != 2) throw py::value_error("data must have shape (samples, 3)");
+    if (info.shape[0] < 2)  throw py::value_error("data must contain at least two samples");
+    if (info.shape[1] != 3) throw py::value_error("data must have shape (samples, 3)");
 }
 
-std::vector<py::ssize_t> output_shape(
-    Dispatch::KernelOp op,
-    size_t n,
-    py::ssize_t dim
-) {
-    if (op == Dispatch::KernelOp::MANY) {
-        return {static_cast<py::ssize_t>(n), dim, dim};
-    }
+std::vector<py::ssize_t> output_shape(Dispatch::KernelOp op, size_t n, py::ssize_t dim) {
+    if (op == Dispatch::KernelOp::MANY) return {static_cast<py::ssize_t>(n), dim, dim};
 
     return {dim, dim};
 }
 
-std::vector<py::ssize_t> spacecurve_output_shape(
-    Dispatch::KernelOp op,
-    size_t n
-) {
-    if (op == Dispatch::KernelOp::MANY) {
-        return {static_cast<py::ssize_t>(n), 3};
-    }
+std::vector<py::ssize_t> spacecurve_output_shape(Dispatch::KernelOp op, size_t n) {
+    if (op == Dispatch::KernelOp::MANY) return {static_cast<py::ssize_t>(n), 3};
 
     return {3};
 }
@@ -180,9 +133,7 @@ py::array run_typed(
     std::string_view integrator
 ) {
     CArrayCoercible<NumT> typed = CArrayCoercible<NumT>::ensure(data);
-    if (!typed) {
-        throw py::type_error("could not convert data to the selected numeric dtype");
-    }
+    if (!typed) throw py::type_error("could not convert data to the selected numeric dtype");
 
     py::buffer_info in_info = typed.request();
     validate_input_shape(n, in_info);
@@ -192,28 +143,23 @@ py::array run_typed(
 
     CArray<NumT> out(output_shape(op, n, in_info.shape[1]));
     py::buffer_info out_info = out.request();
-
-    Params params{
-        Params::num_data<NumT>{
-            static_cast<NumT*>(in_info.ptr),
-            static_cast<NumT*>(out_info.ptr)
-        },
-        n,
-        dim,
-        samples,
-        t0,
-        tf
-    };
-
-    size_t num_idx = NumBackends::resolve(type_name_v<NumT>);
-    size_t mat_idx = MatrixBackends::resolve(matrix_backend);
-    size_t int_idx = IntegratorBackends::resolve(integrator);
-
-    std::unique_ptr<KernelPlan> plan = make_plan(params, num_idx, mat_idx, int_idx);
+    const NumT* in = static_cast<const NumT*>(in_info.ptr);
+    NumT* out_data = static_cast<NumT*>(out_info.ptr);
 
     {
         py::gil_scoped_release release;
-        plan->run(op);
+        run_raw(
+            n,
+            in,
+            out_data,
+            samples,
+            dim,
+            t0,
+            tf,
+            op,
+            matrix_backend,
+            integrator
+        );
     }
 
     return out;
@@ -229,9 +175,7 @@ py::array run_spacecurve_typed(
     std::string_view integrator
 ) {
     CArrayCoercible<NumT> typed = CArrayCoercible<NumT>::ensure(data);
-    if (!typed) {
-        throw py::type_error("could not convert data to the selected numeric dtype");
-    }
+    if (!typed) throw py::type_error("could not convert data to the selected numeric dtype");
 
     py::buffer_info in_info = typed.request();
     validate_spacecurve_input_shape(n, in_info);
@@ -239,48 +183,22 @@ py::array run_spacecurve_typed(
     const size_t samples = static_cast<size_t>(in_info.shape[0]);
     const NumT* in = static_cast<const NumT*>(in_info.ptr);
 
-    std::unique_ptr<NumT[]> padded(new NumT[samples * 4]);
-    for (size_t i = 0; i < samples; ++i) {
-        padded[4 * i] = NumT{0};
-        padded[4 * i + 1] = in[3 * i];
-        padded[4 * i + 2] = in[3 * i + 1];
-        padded[4 * i + 3] = in[3 * i + 2];
-    }
-
-    size_t output_count = (op == Dispatch::KernelOp::MANY) ? n : 1;
-    std::unique_ptr<NumT[]> padded_out(new NumT[output_count * 4]);
-
     CArray<NumT> out(spacecurve_output_shape(op, n));
     py::buffer_info out_info = out.request();
-
-    Params params{
-        Params::num_data<NumT>{
-            padded.get(),
-            padded_out.get()
-        },
-        n,
-        2,
-        samples,
-        t0,
-        tf
-    };
-
-    size_t num_idx = NumBackends::resolve(type_name_v<NumT>);
-    size_t mat_idx = MatrixBackends::resolve("SpaceCurve");
-    size_t int_idx = IntegratorBackends::resolve(integrator);
-
-    std::unique_ptr<KernelPlan> plan = make_plan(params, num_idx, mat_idx, int_idx);
+    NumT* out_data = static_cast<NumT*>(out_info.ptr);
 
     {
         py::gil_scoped_release release;
-        plan->run(op);
-    }
-
-    NumT* out_data = static_cast<NumT*>(out_info.ptr);
-    for (size_t i = 0; i < output_count; ++i) {
-        out_data[3 * i] = padded_out[4 * i + 1];
-        out_data[3 * i + 1] = padded_out[4 * i + 2];
-        out_data[3 * i + 2] = padded_out[4 * i + 3];
+        run_spacecurve_raw(
+            n,
+            in,
+            out_data,
+            samples,
+            t0,
+            tf,
+            op,
+            integrator
+        );
     }
 
     return out;
@@ -297,25 +215,11 @@ py::array run(
 ) {
     py::dtype dtype = data.dtype();
 
-    if (dtype.is(py::dtype::of<f32>())) {
-        return run_typed<f32>(n, data, t0, tf, op, matrix_backend, integrator);
-    }
-
-    if (dtype.is(py::dtype::of<f64>())) {
-        return run_typed<f64>(n, data, t0, tf, op, matrix_backend, integrator);
-    }
-
-    if (dtype.is(py::dtype::of<c32>())) {
-        return run_typed<c32>(n, data, t0, tf, op, matrix_backend, integrator);
-    }
-
-    if (dtype.is(py::dtype::of<c64>())) {
-        return run_typed<c64>(n, data, t0, tf, op, matrix_backend, integrator);
-    }
-
-    throw py::type_error(
-        "magnus only supports dtypes float32, float64, complex64, and complex128"
-    );
+    if (dtype.is(py::dtype::of<f32>())) return run_typed<f32>(n, data, t0, tf, op, matrix_backend, integrator);
+    if (dtype.is(py::dtype::of<f64>())) return run_typed<f64>(n, data, t0, tf, op, matrix_backend, integrator);
+    if (dtype.is(py::dtype::of<c32>())) return run_typed<c32>(n, data, t0, tf, op, matrix_backend, integrator);
+    if (dtype.is(py::dtype::of<c64>())) return run_typed<c64>(n, data, t0, tf, op, matrix_backend, integrator);
+    throw py::type_error("magnus only supports dtypes float32, float64, complex64, and complex128");
 }
 
 py::array run_spacecurve(
@@ -328,25 +232,11 @@ py::array run_spacecurve(
 ) {
     py::dtype dtype = data.dtype();
 
-    if (dtype.is(py::dtype::of<f32>())) {
-        return run_spacecurve_typed<f32>(n, data, t0, tf, op, integrator);
-    }
-
-    if (dtype.is(py::dtype::of<f64>())) {
-        return run_spacecurve_typed<f64>(n, data, t0, tf, op, integrator);
-    }
-
-    if (dtype.is(py::dtype::of<c32>())) {
-        return run_spacecurve_typed<c32>(n, data, t0, tf, op, integrator);
-    }
-
-    if (dtype.is(py::dtype::of<c64>())) {
-        return run_spacecurve_typed<c64>(n, data, t0, tf, op, integrator);
-    }
-
-    throw py::type_error(
-        "magnus only supports dtypes float32, float64, complex64, and complex128"
-    );
+    if (dtype.is(py::dtype::of<f32>())) return run_spacecurve_typed<f32>(n, data, t0, tf, op, integrator);
+    if (dtype.is(py::dtype::of<f64>())) return run_spacecurve_typed<f64>(n, data, t0, tf, op, integrator);
+    if (dtype.is(py::dtype::of<c32>())) return run_spacecurve_typed<c32>(n, data, t0, tf, op, integrator);
+    if (dtype.is(py::dtype::of<c64>())) return run_spacecurve_typed<c64>(n, data, t0, tf, op, integrator);
+    throw py::type_error("magnus only supports dtypes float32, float64, complex64, and complex128");
 }
 
 py::array magnus_one(
@@ -415,9 +305,7 @@ py::array magnus_spacecurve_sum(
 }
 
 PYBIND11_MODULE(_core, m) {
-    Magnus::GLTable::update(
-        std::make_shared<Magnus::StaticTable>(_binary_gl_nodes_bin_start)
-    );
+    Magnus::initialize_default_gl_table();
 
     m.doc() = "Python bindings for the magnus C++ library";
 
@@ -504,4 +392,8 @@ PYBIND11_MODULE(_core, m) {
         py::arg("integrator") = "Auto",
         "Compute the sum of SpaceCurve Magnus expansion terms from 3-vector samples."
     );
+
+#ifdef MAGNUS_ENABLE_JAX_FFI
+    Magnus::JaxFfi::bind(m);
+#endif
 }

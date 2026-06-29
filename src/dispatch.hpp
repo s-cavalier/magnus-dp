@@ -68,9 +68,7 @@ namespace Magnus {
 
         static constexpr size_t resolve( std::string_view name ) {
             if constexpr ( AutoEnabled ) {
-                if ( name == "Auto" ) {
-                    return auto_sentinel();
-                }
+                if ( name == "Auto" ) return auto_sentinel();
             }
 
             for (size_t i = 0; i < dispatch_names.size(); ++i) {
@@ -80,12 +78,18 @@ namespace Magnus {
             throw std::invalid_argument( "Could not resolve dispatch name option" );
         }
 
+        static constexpr std::string_view from_idx( size_t idx ) {
+            if constexpr ( AutoEnabled ) {
+                if ( idx == auto_sentinel() ) return "Auto";
+            }
+
+            return dispatch_names.at(idx);
+        }
+
         template <class F>
         static decltype(auto) dispatch( size_t idx, const Params& p, F&& f ) {
             if constexpr ( AutoEnabled ) {
-                if ( idx == auto_sentinel() ) {
-                    idx = select_impl<0, Ts...>( p );
-                }
+                if ( idx == auto_sentinel() ) idx = select_impl<0, Ts...>( p );
             }
 
             return dispatch_impl<0, Ts...>(idx, p, std::forward<F>(f));
@@ -119,9 +123,7 @@ namespace Magnus {
 
         template <size_t I, AutoDispatchable First, AutoDispatchable... Rest> requires (AutoEnabled)
         static size_t select_impl(const Params& params) {
-            if (First::valid(params) && First::use(params)) {
-                return I;
-            }
+            if (First::valid(params) && First::use(params)) return I;
 
             if constexpr (sizeof...(Rest) > 0) {
                 return select_impl<I + 1, Rest...>(params);

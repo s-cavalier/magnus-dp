@@ -1,6 +1,31 @@
 #include "backendcomposer.hpp"
 
+#include <cstddef>
+#include <memory>
+#include <mutex>
+#include <stdexcept>
+
+extern "C" std::byte _binary_gl_nodes_bin_start[];
+
+namespace {
+    std::once_flag default_gl_table_once;
+}
+
+void Magnus::initialize_default_gl_table() {
+    std::call_once(default_gl_table_once, [] {
+        try {
+            (void)GLTable::get();
+        } catch (const std::runtime_error&) {
+            GLTable::update(
+                std::make_shared<StaticTable>(_binary_gl_nodes_bin_start)
+            );
+        }
+    });
+}
+
 std::unique_ptr<Magnus::KernelPlan> Magnus::make_plan(Params& p, size_t num_idx, size_t mat_idx, size_t int_idx) {
+    initialize_default_gl_table();
+
     if ( p.n > 1 ) {
         size_t required_order = (p.n + 3) / 2;
         if ( required_order > GLTable::get()->max_order() ) throw std::invalid_argument("requested magnus order exceeds GL table. Consider providing a larger table.");
