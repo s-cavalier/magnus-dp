@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.16)
 
 project(magnus LANGUAGES CXX)
 
+option(MAGNUS_ENABLE_JAX_FFI "Build JAX FFI registration hooks" ON)
+
 find_package(BLAS REQUIRED)
 find_package(TBB REQUIRED)
 
@@ -59,6 +61,38 @@ add_subdirectory("${MAGNUS_PYBIND11_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/extern/py
 pybind11_add_module(magnus_python
     src/python.cpp
 )
+
+if(MAGNUS_ENABLE_JAX_FFI)
+    set(MAGNUS_JAX_INCLUDE_DIR "" CACHE PATH "Path to JAX's bundled XLA FFI include directory")
+
+    if(NOT MAGNUS_JAX_INCLUDE_DIR)
+        execute_process(
+            COMMAND "${Python3_EXECUTABLE}" "-c" "from jax import ffi; print(ffi.include_dir())"
+            RESULT_VARIABLE MAGNUS_JAX_INCLUDE_RESULT
+            OUTPUT_VARIABLE MAGNUS_JAX_INCLUDE_DIR
+            ERROR_VARIABLE MAGNUS_JAX_INCLUDE_ERROR
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+
+        if(NOT MAGNUS_JAX_INCLUDE_RESULT EQUAL 0)
+            message(FATAL_ERROR
+                "MAGNUS_ENABLE_JAX_FFI=ON requires JAX to be importable by "
+                "${Python3_EXECUTABLE}.\n${MAGNUS_JAX_INCLUDE_ERROR}"
+            )
+        endif()
+    endif()
+
+    if(NOT EXISTS "${MAGNUS_JAX_INCLUDE_DIR}/xla/ffi/api/ffi.h")
+        message(FATAL_ERROR
+            "Could not find xla/ffi/api/ffi.h under MAGNUS_JAX_INCLUDE_DIR="
+            "${MAGNUS_JAX_INCLUDE_DIR}"
+        )
+    endif()
+
+    target_sources(magnus_python PRIVATE src/jax_ffi.cpp)
+    target_include_directories(magnus_python PRIVATE "${MAGNUS_JAX_INCLUDE_DIR}")
+    target_compile_definitions(magnus_python PRIVATE MAGNUS_ENABLE_JAX_FFI=1)
+endif()
 
 target_link_libraries(magnus_python PRIVATE magnus_core)
 target_compile_features(magnus_python PRIVATE cxx_std_23)
