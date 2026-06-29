@@ -43,7 +43,9 @@ namespace Magnus {
         // DP buffer space
         typename Int::allocator_t usable_alloc = alloc;
         NumT* Y_data = usable_alloc.allocate(total_data_size);
+        NumT* total_data = usable_alloc.allocate(matrix_size);
         MatrixSpanT Y( Y_data, mat_dim, sample_len );
+        MatrixViewT total_copy( total_data, mat_dim );
 
         MatrixViewT temp = integrator.borrow_scratch();
 
@@ -56,21 +58,15 @@ namespace Magnus {
             
             for ( size_t k = 2; k <= n; ++k ) {
                 integrator.prefix( Y, dt );
-
                 MatrixViewT total = Y[ sample_len - 1 ];
-
-                for (size_t i = 0; i < sample_len; ++i) {
-                    MatrixViewT Y_i = Y[i];
-                    Y_i.add( total, shift );
-                    temp.save_matmul( A[i], Y_i );
-                    Y_i.copy_from(temp);
-                };
-                
+                total_copy.copy_from(total);
+                Y.sample_update(A, total_copy, shift, temp);
             }   
 
             integrator.sum(Y, out, final_scale);
         }
 
+        usable_alloc.deallocate(total_data, matrix_size);
         usable_alloc.deallocate(Y_data, total_data_size);
     }
 
@@ -110,7 +106,9 @@ namespace Magnus {
         // DP buffer space
         typename Int::allocator_t usable_alloc = alloc;
         NumT* Y_data = usable_alloc.allocate(total_data_size);
+        NumT* total_data = usable_alloc.allocate(matrix_size);
         MatrixSpanT Y( Y_data, mat_dim, sample_len );
+        MatrixViewT total_copy( total_data, mat_dim );
 
         MatrixViewT temp = integrator.borrow_scratch();
 
@@ -125,19 +123,15 @@ namespace Magnus {
                 integrator.prefix( Y, dt );
 
                 MatrixViewT total = Y[ sample_len - 1 ];
-
-                for (size_t i = 0; i < sample_len; ++i) {
-                    MatrixViewT Y_i = Y[i];
-                    Y_i.add(total, shift);
-                    temp.save_matmul( A[i], Y_i );
-                    Y_i.copy_from(temp);
-                };
+                total_copy.copy_from(total);
+                Y.sample_update(A, total_copy, shift, temp);
                 
                 MatrixViewT term = out[k - 1];
                 integrator.sum(Y, term, final_scale);
             }   
         }
 
+        usable_alloc.deallocate(total_data, matrix_size);
         usable_alloc.deallocate(Y_data, total_data_size);
 
     }
@@ -177,7 +171,9 @@ namespace Magnus {
         // DP buffer space
         typename Int::allocator_t usable_alloc = alloc;
         NumT* Y_data = usable_alloc.allocate(total_data_size);
+        NumT* total_data = usable_alloc.allocate(matrix_size);
         MatrixSpanT Y( Y_data, mat_dim, sample_len );
+        MatrixViewT total_copy( total_data, mat_dim );
 
         MatrixViewT temp = integrator.borrow_scratch();
 
@@ -192,18 +188,14 @@ namespace Magnus {
                 integrator.prefix( Y, dt );
 
                 MatrixViewT total = Y[ sample_len - 1 ];
-
-                for (size_t i = 0; i < sample_len; ++i) {
-                    MatrixViewT Y_i = Y[i];
-                    Y_i.add(total, shift);
-                    temp.save_matmul( A[i], Y_i );
-                    Y_i.copy_from(temp);
-                };
+                total_copy.copy_from(total);
+                Y.sample_update(A, total_copy, shift, temp);
 
                 integrator.sum(Y, out, final_scale);
             }   
         }
 
+        usable_alloc.deallocate(total_data, matrix_size);
         usable_alloc.deallocate(Y_data, total_data_size);
     }
 

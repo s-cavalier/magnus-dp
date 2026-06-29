@@ -22,42 +22,82 @@ namespace Magnus {
         class NumT,
         MatMulKernelT<NumT> mm_kernel,
         MatAddKernelT<NumT> ma_kernel,
+        MatCopyKernelT<NumT> cp_kernel
+    >
+    void generic_sample_update(
+        size_t dim,
+        size_t len,
+        const NumT* MAGNUS_RESTRICT A,
+        NumT* MAGNUS_RESTRICT Y,
+        const NumT* MAGNUS_RESTRICT total,
+        double shift,
+        NumT* MAGNUS_RESTRICT temp
+    ) {
+        size_t mat_size = dim * dim;
+
+        for (size_t i = 0; i < len; ++i) {
+            const NumT* MAGNUS_RESTRICT a_i = A + i * mat_size;
+            NumT* MAGNUS_RESTRICT y_i = Y + i * mat_size;
+
+            ma_kernel(dim, y_i, total, shift);
+            mm_kernel(dim, a_i, y_i, temp);
+            cp_kernel(dim, temp, y_i);
+        }
+    }
+
+    template <
+        class NumT,
+        MatMulKernelT<NumT> mm_kernel,
+        MatAddKernelT<NumT> ma_kernel,
         MatScaleKernelT<NumT> ms_kernel,
         MatCopyKernelT<NumT> cp_kernel,
         MatCopyKernelT<NumT> wcp_kernel,
-        MatZeroKernelT<NumT> z_kernel
+        MatZeroKernelT<NumT> z_kernel,
+        SampleUpdateKernelT<NumT> su_kernel = generic_sample_update<NumT, mm_kernel, ma_kernel, cp_kernel>
     >
     struct GenericMatrixPolicy {
         using numeric_t = NumT;
 
-        static void matmul(size_t dim, const NumT* a, const NumT* b, NumT* out) {
+        static void matmul(size_t dim, const NumT* MAGNUS_RESTRICT a, const NumT* MAGNUS_RESTRICT b, NumT* MAGNUS_RESTRICT out) {
             mm_kernel(dim, a, b, out);
         }
 
-        static void matadd(size_t dim, NumT* a, const NumT* b, double scalar = 1.0) {
+        static void matadd(size_t dim, NumT* MAGNUS_RESTRICT a, const NumT* MAGNUS_RESTRICT b, double scalar = 1.0) {
             ma_kernel(dim, a, b, scalar);
         }
 
-        static void matscale(size_t dim, NumT* a, double scalar) {
+        static void matscale(size_t dim, NumT* MAGNUS_RESTRICT a, double scalar) {
             ms_kernel(dim, a, scalar);
         }
 
-        static void matcopy( size_t dim, const NumT* src, NumT* dst ) {
+        static void matcopy( size_t dim, const NumT* MAGNUS_RESTRICT src, NumT* MAGNUS_RESTRICT dst ) {
             cp_kernel(dim, src, dst);
         }
 
-        static void matwcopy( size_t total, const NumT* src, NumT* dst ) {
+        static void matwcopy( size_t total, const NumT* MAGNUS_RESTRICT src, NumT* MAGNUS_RESTRICT dst ) {
             wcp_kernel(total, src, dst);
         }
 
-        static void matzero( size_t dim, NumT* dst ) {
+        static void matzero( size_t dim, NumT* MAGNUS_RESTRICT dst ) {
             z_kernel(dim, dst);
+        }
+
+        static void sample_update(
+            size_t dim,
+            size_t len,
+            const NumT* MAGNUS_RESTRICT A,
+            NumT* MAGNUS_RESTRICT Y,
+            const NumT* MAGNUS_RESTRICT total,
+            double shift,
+            NumT* MAGNUS_RESTRICT temp
+        ) {
+            su_kernel(dim, len, A, Y, total, shift, temp);
         }
 
     };
 
     template <class NumT>
-    void blas_matmul(size_t dim, const NumT* a, const NumT* b, NumT* out ) {
+    void blas_matmul(size_t dim, const NumT* MAGNUS_RESTRICT a, const NumT* MAGNUS_RESTRICT b, NumT* MAGNUS_RESTRICT out ) {
         if constexpr ( std::is_same_v<NumT, float> ) {
             cblas_sgemm(
                 CblasRowMajor,
@@ -133,7 +173,7 @@ namespace Magnus {
     }
 
     template <class NumT>
-    void blas_matadd( size_t dim, NumT* a, const NumT* b, double scalar ) {
+    void blas_matadd( size_t dim, NumT* MAGNUS_RESTRICT a, const NumT* MAGNUS_RESTRICT b, double scalar ) {
         size_t size = dim * dim;
 
         if constexpr ( std::is_same_v<NumT, float> ) {
@@ -156,7 +196,7 @@ namespace Magnus {
     }
 
     template <class NumT>
-    void blas_matscale(size_t dim, NumT* a, double scalar) {
+    void blas_matscale(size_t dim, NumT* MAGNUS_RESTRICT a, double scalar) {
         size_t size = dim * dim;
 
         if constexpr ( std::is_same_v<NumT, float> ) {
@@ -177,7 +217,7 @@ namespace Magnus {
     }
 
     template <class NumT>
-    void blas_matwcopy(size_t total, const NumT* src, NumT* dst) {
+    void blas_matwcopy(size_t total, const NumT* MAGNUS_RESTRICT src, NumT* MAGNUS_RESTRICT dst) {
         if constexpr ( std::is_same_v<NumT, float> ) {
             cblas_scopy( total, src, 1, dst, 1 );
         }
@@ -196,12 +236,12 @@ namespace Magnus {
     }
 
     template <class NumT>
-    void blas_matcopy(size_t dim, const NumT* src, NumT* dst) {
+    void blas_matcopy(size_t dim, const NumT* MAGNUS_RESTRICT src, NumT* MAGNUS_RESTRICT dst) {
         blas_matwcopy<NumT>(dim * dim, src, dst);
     }
 
     template <class NumT>
-    void blas_zero(size_t dim, NumT* dst) {
+    void blas_zero(size_t dim, NumT* MAGNUS_RESTRICT dst) {
         size_t size = dim * dim;
         static constexpr size_t PAR_THRESHOLD = 1 << 26;
         if ( size >= PAR_THRESHOLD ) {
@@ -215,7 +255,7 @@ namespace Magnus {
     using BlasPolicy = GenericMatrixPolicy<NumT, blas_matmul<NumT>, blas_matadd<NumT>, blas_matscale<NumT>, blas_matcopy<NumT>, blas_matwcopy<NumT>, blas_zero<NumT>>;
 
     template <class NumT>
-    void manual_matmul( size_t dim, const NumT* a, const NumT* b, NumT* out ) {
+    void manual_matmul( size_t dim, const NumT* MAGNUS_RESTRICT a, const NumT* MAGNUS_RESTRICT b, NumT* MAGNUS_RESTRICT out ) {
         for (size_t i = 0; i < dim; ++i) {
             for (size_t j = 0; j < dim; ++j) {
                 out[i * dim + j] = 0;
@@ -227,31 +267,31 @@ namespace Magnus {
     }
 
     template <class NumT>
-    void manual_matadd(size_t dim, NumT* a, const NumT* b, double scalar) {
+    void manual_matadd(size_t dim, NumT* MAGNUS_RESTRICT a, const NumT* MAGNUS_RESTRICT b, double scalar) {
         size_t size = dim * dim;
         auto x = scalar_as_num<NumT>(scalar);
         for (size_t i = 0; i < size; ++i) a[i] += b[i] * x;
     }
 
     template <class NumT>
-    void manual_matscale(size_t dim, NumT* a, double scalar) {
+    void manual_matscale(size_t dim, NumT* MAGNUS_RESTRICT a, double scalar) {
         size_t size = dim * dim;
         auto x = scalar_as_num<NumT>(scalar);
         for (size_t i = 0; i < size; ++i) a[i] *= x;
     }
 
     template <class NumT>
-    void manual_matwcopy(size_t total, const NumT* src, NumT* dst) {
+    void manual_matwcopy(size_t total, const NumT* MAGNUS_RESTRICT src, NumT* MAGNUS_RESTRICT dst) {
         std::copy_n(src, total, dst);
     }
 
     template <class NumT>
-    void manual_matcopy(size_t dim, const NumT* src, NumT* dst) {
+    void manual_matcopy(size_t dim, const NumT* MAGNUS_RESTRICT src, NumT* MAGNUS_RESTRICT dst) {
         manual_matwcopy(dim * dim, src, dst);
     }
 
     template <class NumT>
-    void manual_matzero(size_t dim, NumT* dst) {
+    void manual_matzero(size_t dim, NumT* MAGNUS_RESTRICT dst) {
         std::fill_n(dst, dim * dim, NumT{0});
     }
 
@@ -259,7 +299,12 @@ namespace Magnus {
     using ManualPolicy = GenericMatrixPolicy<NumT, manual_matmul<NumT>, manual_matadd<NumT>, manual_matscale<NumT>, manual_matcopy<NumT>, manual_matwcopy<NumT>, manual_matzero<NumT>>;
 
     template <class NumT, size_t Dim>
-    void fixed_dim_matmul([[maybe_unused]] size_t dim, const NumT* a, const NumT* b, NumT* out) {
+    void fixed_dim_matmul(
+        [[maybe_unused]] size_t dim,
+        const NumT* MAGNUS_RESTRICT a,
+        const NumT* MAGNUS_RESTRICT b,
+        NumT* MAGNUS_RESTRICT out
+    ) {
         if constexpr ( Dim == 2 ) {
             out[0] = a[0] * b[0] + a[1] * b[2];
             out[1] = a[0] * b[1] + a[1] * b[3];
@@ -279,39 +324,87 @@ namespace Magnus {
     }
 
     template <class NumT, size_t Dim>
-    void fixed_dim_matadd( [[maybe_unused]] size_t dim, NumT* a, const NumT* b, double scalar ) {
+    void fixed_dim_matadd(
+        [[maybe_unused]] size_t dim,
+        NumT* MAGNUS_RESTRICT a,
+        const NumT* MAGNUS_RESTRICT b,
+        double scalar
+    ) {
         auto x = scalar_as_num<NumT>(scalar);
         for (size_t i = 0; i < Dim * Dim; ++i) a[i] += b[i] * x;
     }
 
     template <class NumT, size_t Dim>
-    void fixed_dim_matscale( [[maybe_unused]] size_t dim, NumT* a, double scalar ) {
+    void fixed_dim_matscale( [[maybe_unused]] size_t dim, NumT* MAGNUS_RESTRICT a, double scalar ) {
         auto x = scalar_as_num<NumT>(scalar);
         for (size_t i = 0; i < Dim * Dim; ++i) a[i] *= x;
     }
 
     template <class NumT, size_t Dim>
-    void fixed_dim_matwcopy( size_t total, const NumT* src, NumT* dst ) {
+    void fixed_dim_matwcopy( size_t total, const NumT* MAGNUS_RESTRICT src, NumT* MAGNUS_RESTRICT dst ) {
         for ( size_t i = 0; i < total; ++i ) dst[i] = src[i];
     }
 
     template <class NumT, size_t Dim>
-    void fixed_dim_matcopy( [[maybe_unused]] size_t, const NumT* src, NumT* dst ) {
+    void fixed_dim_matcopy( [[maybe_unused]] size_t, const NumT* MAGNUS_RESTRICT src, NumT* MAGNUS_RESTRICT dst ) {
         for ( size_t i = 0; i < Dim * Dim; ++i ) dst[i] = src[i];
     }
 
     template <class NumT, size_t Dim>
-    void fixed_dim_matzero( [[maybe_unused]] size_t, NumT* dst ) {
+    void fixed_dim_matzero( [[maybe_unused]] size_t, NumT* MAGNUS_RESTRICT dst ) {
         for (size_t i = 0; i < Dim * Dim; ++i) dst[i] = 0;
     }
 
     template <class NumT, size_t Dim>
-    using FixedDimPolicy = GenericMatrixPolicy<NumT, fixed_dim_matmul<NumT, Dim>, fixed_dim_matadd<NumT, Dim>, fixed_dim_matscale<NumT, Dim>, fixed_dim_matcopy<NumT, Dim>, fixed_dim_matwcopy<NumT, Dim>, fixed_dim_matzero<NumT, Dim>>;
+    void fixed_dim_sample_update(
+        [[maybe_unused]] size_t dim,
+        size_t len,
+        const NumT* MAGNUS_RESTRICT A,
+        NumT* MAGNUS_RESTRICT Y,
+        const NumT* MAGNUS_RESTRICT total,
+        double shift,
+        NumT* MAGNUS_RESTRICT temp
+    ) {
+        if constexpr ( Dim == 2 ) {
+            auto x = scalar_as_num<NumT>(shift);
+
+            for (size_t i = 0; i < len; ++i) {
+                const NumT* MAGNUS_RESTRICT a = A + i * 4;
+                NumT* MAGNUS_RESTRICT y = Y + i * 4;
+
+                NumT b0 = y[0] + total[0] * x;
+                NumT b1 = y[1] + total[1] * x;
+                NumT b2 = y[2] + total[2] * x;
+                NumT b3 = y[3] + total[3] * x;
+
+                y[0] = a[0] * b0 + a[1] * b2;
+                y[1] = a[0] * b1 + a[1] * b3;
+                y[2] = a[2] * b0 + a[3] * b2;
+                y[3] = a[2] * b1 + a[3] * b3;
+            }
+        }
+        else {
+            generic_sample_update<
+                NumT,
+                fixed_dim_matmul<NumT, Dim>,
+                fixed_dim_matadd<NumT, Dim>,
+                fixed_dim_matcopy<NumT, Dim>
+            >(dim, len, A, Y, total, shift, temp);
+        }
+    }
+
+    template <class NumT, size_t Dim>
+    using FixedDimPolicy = GenericMatrixPolicy<NumT, fixed_dim_matmul<NumT, Dim>, fixed_dim_matadd<NumT, Dim>, fixed_dim_matscale<NumT, Dim>, fixed_dim_matcopy<NumT, Dim>, fixed_dim_matwcopy<NumT, Dim>, fixed_dim_matzero<NumT, Dim>, fixed_dim_sample_update<NumT, Dim>>;
 
 namespace SpaceCurve {
 
     template <class NumT>
-    void matmul( [[maybe_unused]] size_t, const NumT* a, const NumT* b, NumT* c ) {
+    void matmul(
+        [[maybe_unused]] size_t,
+        const NumT* MAGNUS_RESTRICT a,
+        const NumT* MAGNUS_RESTRICT b,
+        NumT* MAGNUS_RESTRICT c
+    ) {
         c[0] = a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
         c[1] = b[0] * a[1] + a[2] * b[3] - a[3] * b[2];
         c[2] = b[0] * a[2] + a[3] * b[1] - a[1] * b[3];
@@ -319,7 +412,12 @@ namespace SpaceCurve {
     }
 
     template <class NumT>
-    void add( [[maybe_unused]] size_t, NumT* a, const NumT* b, double scalar ) {
+    void add(
+        [[maybe_unused]] size_t,
+        NumT* MAGNUS_RESTRICT a,
+        const NumT* MAGNUS_RESTRICT b,
+        double scalar
+    ) {
         auto x = scalar_as_num<NumT>(scalar);
         a[0] += b[0] * x;
         a[1] += b[1] * x;
@@ -328,7 +426,7 @@ namespace SpaceCurve {
     }
 
     template <class NumT>
-    void scale( [[maybe_unused]] size_t, NumT* a, double scalar ) {
+    void scale( [[maybe_unused]] size_t, NumT* MAGNUS_RESTRICT a, double scalar ) {
         auto x = scalar_as_num<NumT>(scalar);
         a[0] *= x;
         a[1] *= x;
@@ -337,7 +435,7 @@ namespace SpaceCurve {
     }
 
     template <class NumT>
-    void wcopy( size_t total, const NumT* src, NumT* dst ) {
+    void wcopy( size_t total, const NumT* MAGNUS_RESTRICT src, NumT* MAGNUS_RESTRICT dst ) {
         for ( size_t i = 0; i < total; i += 4 ) {
             dst[i] = src[i];
             dst[i + 1] = src[i + 1];
@@ -347,7 +445,7 @@ namespace SpaceCurve {
     }
 
     template <class NumT>
-    void copy( [[maybe_unused]] size_t, const NumT* src, NumT* dst ) {
+    void copy( [[maybe_unused]] size_t, const NumT* MAGNUS_RESTRICT src, NumT* MAGNUS_RESTRICT dst ) {
         dst[0] = src[0];
         dst[1] = src[1];
         dst[2] = src[2];
@@ -355,7 +453,7 @@ namespace SpaceCurve {
     }
 
     template <class NumT>
-    void zero( [[maybe_unused]] size_t, NumT* dst ) {
+    void zero( [[maybe_unused]] size_t, NumT* MAGNUS_RESTRICT dst ) {
         dst[0] = NumT{0};
         dst[1] = NumT{0};
         dst[2] = NumT{0};
@@ -363,7 +461,35 @@ namespace SpaceCurve {
     }
 
     template <class NumT>
-    using Policy = GenericMatrixPolicy<NumT, SpaceCurve::matmul<NumT>, SpaceCurve::add<NumT>, SpaceCurve::scale<NumT>, SpaceCurve::copy<NumT>, SpaceCurve::wcopy<NumT>, SpaceCurve::zero<NumT>>;
+    void sample_update(
+        [[maybe_unused]] size_t dim,
+        size_t len,
+        const NumT* MAGNUS_RESTRICT A,
+        NumT* MAGNUS_RESTRICT Y,
+        const NumT* MAGNUS_RESTRICT total,
+        double shift,
+        [[maybe_unused]] NumT* MAGNUS_RESTRICT temp
+    ) {
+        auto x = scalar_as_num<NumT>(shift);
+
+        for (size_t i = 0; i < len; ++i) {
+            const NumT* MAGNUS_RESTRICT a = A + i * 4;
+            NumT* MAGNUS_RESTRICT y = Y + i * 4;
+
+            NumT b0 = y[0] + total[0] * x;
+            NumT b1 = y[1] + total[1] * x;
+            NumT b2 = y[2] + total[2] * x;
+            NumT b3 = y[3] + total[3] * x;
+
+            y[0] = a[1] * b1 + a[2] * b2 + a[3] * b3;
+            y[1] = b0 * a[1] + a[2] * b3 - a[3] * b2;
+            y[2] = b0 * a[2] + a[3] * b1 - a[1] * b3;
+            y[3] = b0 * a[3] + a[1] * b2 - a[2] * b1;
+        }
+    }
+
+    template <class NumT>
+    using Policy = GenericMatrixPolicy<NumT, SpaceCurve::matmul<NumT>, SpaceCurve::add<NumT>, SpaceCurve::scale<NumT>, SpaceCurve::copy<NumT>, SpaceCurve::wcopy<NumT>, SpaceCurve::zero<NumT>, SpaceCurve::sample_update<NumT>>;
 
 }
 

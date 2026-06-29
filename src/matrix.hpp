@@ -9,11 +9,13 @@
 #include <string>
 #include <concepts>
 
-/* 
-Possible TODO:
-Use __restrict__ on some of the pointers for some speedup
-*/
-
+#ifndef MAGNUS_RESTRICT
+#if defined(__GNUC__) || defined(__clang__)
+#define MAGNUS_RESTRICT __restrict__
+#else
+#define MAGNUS_RESTRICT
+#endif
+#endif
 
 namespace Magnus {
 
@@ -30,22 +32,26 @@ namespace Magnus {
         { T::matcopy( size_t{}, cm, m ) } -> std::same_as<void>;
         { T::matwcopy( size_t{}, cm, m ) } -> std::same_as<void>;
         { T::matzero( size_t{}, m ) } -> std::same_as<void>;
+        { T::sample_update( size_t{}, size_t{}, cm, m, cm, double{}, m ) } -> std::same_as<void>;
     };
 
     template <class NumT>
-    using MatMulKernelT = void(&)(size_t, const NumT*, const NumT*, NumT*);
+    using MatMulKernelT = void(&)(size_t, const NumT* MAGNUS_RESTRICT, const NumT* MAGNUS_RESTRICT, NumT* MAGNUS_RESTRICT);
 
     template <class NumT>
-    using MatAddKernelT = void(&)(size_t, NumT*, const NumT*, double);
+    using MatAddKernelT = void(&)(size_t, NumT* MAGNUS_RESTRICT, const NumT* MAGNUS_RESTRICT, double);
 
     template <class NumT>
-    using MatScaleKernelT = void(&)(size_t, NumT*, double);
+    using MatScaleKernelT = void(&)(size_t, NumT* MAGNUS_RESTRICT, double);
 
     template <class NumT>
-    using MatCopyKernelT = void(&)(size_t, const NumT*, NumT*);
+    using MatCopyKernelT = void(&)(size_t, const NumT* MAGNUS_RESTRICT, NumT* MAGNUS_RESTRICT);
 
     template <class NumT>
-    using MatZeroKernelT = void(&)(size_t, NumT*);
+    using MatZeroKernelT = void(&)(size_t, NumT* MAGNUS_RESTRICT);
+
+    template <class NumT>
+    using SampleUpdateKernelT = void(&)( size_t, size_t, const NumT* MAGNUS_RESTRICT, NumT* MAGNUS_RESTRICT, const NumT* MAGNUS_RESTRICT, double, NumT* MAGNUS_RESTRICT );
 
     template <class NumT, MatrixPolicy MatPolicyT>
     class MatrixView {
@@ -312,6 +318,23 @@ namespace Magnus {
 
         void copy_from( const MatrixSpan& other ) {
             matrix_policy_t::matwcopy( m_size * m_len, other.m_data, m_data );
+        }
+
+        void sample_update(
+            const MatrixSpan& A,
+            const matrix_t& total,
+            double shift,
+            matrix_t& temp
+        ) {
+            matrix_policy_t::sample_update(
+                m_dim,
+                m_len,
+                A.data(),
+                m_data,
+                total.data(),
+                shift,
+                temp.data()
+            );
         }
 
     };
