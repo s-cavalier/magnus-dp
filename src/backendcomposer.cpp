@@ -7,18 +7,14 @@
 
 extern "C" std::byte _binary_gl_nodes_bin_start[];
 
-namespace {
-    std::once_flag default_gl_table_once;
-}
+static std::once_flag default_gl_table_once;
 
 void Magnus::initialize_default_gl_table() {
     std::call_once(default_gl_table_once, [] {
         try {
             (void)GLTable::get();
         } catch (const std::runtime_error&) {
-            GLTable::update(
-                std::make_shared<StaticTable>(_binary_gl_nodes_bin_start)
-            );
+            GLTable::update(std::make_shared<StaticTable>(_binary_gl_nodes_bin_start));
         }
     });
 }

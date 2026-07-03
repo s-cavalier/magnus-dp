@@ -6,38 +6,31 @@ option(MAGNUS_ENABLE_JAX_FFI "Build JAX FFI registration hooks" ON)
 
 find_package(BLAS REQUIRED)
 find_package(TBB REQUIRED)
+find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
+
+set(MAGNUS_GL_MAX_ORDER 64 CACHE STRING "Maximum generated Gauss-Legendre order")
 
 add_custom_command(
-    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.o
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.cpp
 
-    COMMAND ${CMAKE_COMMAND} -E chdir
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_OBJCOPY}
-            -I binary
-            -O elf64-x86-64
-            -B i386:x86-64
-            gl-nodes.bin
-            ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.o
-    COMMAND ${CMAKE_OBJCOPY}
-            --add-section
-            .note.GNU-stack=/dev/null
-            --set-section-flags
-            .note.GNU-stack=contents,readonly
-            ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.o
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/gen_nodes.py
+        ${MAGNUS_GL_MAX_ORDER}
+        ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.cpp
 
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/gl-nodes.bin
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/gen_nodes.py
+    VERBATIM
 )
 
 add_library(magnus_core STATIC
     src/gausslegendre.cpp
     src/backendcomposer.cpp
-    ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.o
+    ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.cpp
 )
 
 set_source_files_properties(
-    ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.o
+    ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.cpp
     PROPERTIES
-    EXTERNAL_OBJECT TRUE
     GENERATED TRUE
 )
 
@@ -46,8 +39,6 @@ target_compile_options(magnus_core PUBLIC -O3 -march=native)
 target_include_directories(magnus_core PUBLIC src)
 target_link_libraries(magnus_core PUBLIC BLAS::BLAS TBB::tbb)
 set_target_properties(magnus_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
-find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
 
 set(MAGNUS_PYBIND11_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/extern/pybind11"
