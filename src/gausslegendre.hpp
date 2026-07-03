@@ -20,7 +20,7 @@ namespace Magnus {
     Assumes doubles. Maybe extend later for other purposes.
     */
     class GLTable {
-        inline static std::atomic<std::shared_ptr<const GLTable>> global_table{nullptr};
+        static std::atomic<std::shared_ptr<const GLTable>> global_table;
 
     protected:
         size_t m_max_order;
@@ -43,23 +43,13 @@ namespace Magnus {
             const double* nodes() const;
         };
 
-        virtual ~GLTable() = default;
+        virtual ~GLTable();
         virtual DataView get_order(size_t n) const = 0;
 
         size_t max_order() const;
 
-        static std::shared_ptr<const GLTable> get() {
-            auto ptr = global_table.load(std::memory_order_acquire);
-
-            if (!ptr) throw std::runtime_error("Global Gauss-Legendre table is null");
-
-            return ptr;
-        }
-
-        static void update(std::shared_ptr<const GLTable> new_table) {
-            if (!new_table) throw std::invalid_argument("Tried to initialize table with nullptr");
-            global_table.store( std::move(new_table), std::memory_order_release );
-        }
+        static std::shared_ptr<const GLTable> get();
+        static void update(std::shared_ptr<const GLTable> new_table);
 
     };
 
@@ -78,18 +68,7 @@ namespace Magnus {
         double* nodes;
 
     public:
-        StaticTable(std::byte* table) : GLTable(0) {
-            PyGLTableHeader* header = (PyGLTableHeader*)table;
-
-            if ( header->magic[0] != 'L' || header->magic[1] != 'G' || header->magic[2] != '0' || header->magic[3] != '1' )
-                throw std::runtime_error("Invalid magic number; StaticTable(std::byte*)");
-
-            this->m_max_order = header->max_n;
-
-            offsets = (size_t*)(table + header->offsets_offset);
-            weights = (double*)(table + header->weights_offset);
-            nodes = (double*)(table + header->nodes_offset);
-        }
+        StaticTable(std::byte* table);
 
         DataView get_order(size_t n) const override;
 

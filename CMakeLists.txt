@@ -18,6 +18,12 @@ add_custom_command(
             -B i386:x86-64
             gl-nodes.bin
             ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.o
+    COMMAND ${CMAKE_OBJCOPY}
+            --add-section
+            .note.GNU-stack=/dev/null
+            --set-section-flags
+            .note.GNU-stack=contents,readonly
+            ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.o
 
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/gl-nodes.bin
 )

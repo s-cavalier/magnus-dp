@@ -1,7 +1,6 @@
 #include "backendcomposer.hpp"
 #include "gausslegendre.hpp"
 
-#include <complex>
 #include <limits>
 #include <memory>
 #include <string>
@@ -60,11 +59,7 @@ std::vector<size_t> gl_offsets(size_t max_order) {
     return offsets;
 }
 
-std::vector<double> copy_gl_array(
-    py::array data,
-    size_t expected_size,
-    std::string_view name
-) {
+std::vector<double> copy_gl_array(py::array data, size_t expected_size, std::string_view name) {
     CArrayCoercible<double> typed = CArrayCoercible<double>::ensure(data);
     if (!typed) throw py::type_error("GL data must be convertible to float64");
 
@@ -76,11 +71,7 @@ std::vector<double> copy_gl_array(
     return {ptr, ptr + expected_size};
 }
 
-void replace_gl_table(
-    size_t max_order,
-    py::array weights,
-    py::array nodes
-) {
+void replace_gl_table(size_t max_order, py::array weights, py::array nodes) {
     size_t expected_size = gl_entry_count(max_order);
 
     std::vector<double> weight_values = copy_gl_array(weights, expected_size, "weights");

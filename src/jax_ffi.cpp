@@ -17,12 +17,7 @@ namespace Magnus::JaxFfi {
 
 namespace {
 
-ffi::Error validate_matrix_output_shape(
-    const ffi::AnyBuffer::Dimensions& dims,
-    Dispatch::KernelOp op,
-    size_t n,
-    size_t dim
-) {
+ffi::Error validate_matrix_output_shape(const ffi::AnyBuffer::Dimensions& dims, Dispatch::KernelOp op, size_t n, size_t dim) {
     if (op == Dispatch::KernelOp::MANY) {
         if (
             dims.size() != 3
@@ -36,31 +31,17 @@ ffi::Error validate_matrix_output_shape(
         return ffi::Error::Success();
     }
 
-    if (
-        dims.size() != 2
-        || static_cast<size_t>(dims[0]) != dim
-        || static_cast<size_t>(dims[1]) != dim
-    ) {
+    if (dims.size() != 2 || static_cast<size_t>(dims[0]) != dim || static_cast<size_t>(dims[1]) != dim) {
         return ffi::Error::InvalidArgument("one/sum output must have shape (dim, dim)");
     }
 
     return ffi::Error::Success();
 }
 
-ffi::Error validate_spacecurve_output_shape(
-    const ffi::AnyBuffer::Dimensions& dims,
-    Dispatch::KernelOp op,
-    size_t n
-) {
+ffi::Error validate_spacecurve_output_shape(const ffi::AnyBuffer::Dimensions& dims, Dispatch::KernelOp op, size_t n) {
     if (op == Dispatch::KernelOp::MANY) {
-        if (
-            dims.size() != 2
-            || static_cast<size_t>(dims[0]) != n
-            || static_cast<size_t>(dims[1]) != 3
-        ) {
-            return ffi::Error::InvalidArgument(
-                "many spacecurve output must have shape (n, 3)"
-            );
+        if (dims.size() != 2 || static_cast<size_t>(dims[0]) != n || static_cast<size_t>(dims[1]) != 3) {
+            return ffi::Error::InvalidArgument("many spacecurve output must have shape (n, 3)");
         }
 
         return ffi::Error::Success();
@@ -281,14 +262,10 @@ py::dict registrations() {
     return targets;
 }
 
-} // namespace
-
-void bind(py::module_& m) {
-    m.def(
-        "registrations",
-        &registrations,
-        "Return JAX FFI CPU target registrations."
-    );
 }
 
-} // namespace Magnus::JaxFfi
+void bind(py::module_& m) {
+    m.def( "registrations", &registrations, "Return JAX FFI CPU target registrations." );
+}
+
+}

@@ -1,7 +1,7 @@
 #ifndef __MAT_BACKENDS_HPP__
 #define __MAT_BACKENDS_HPP__
 #include "dispatch.hpp"
-#include <cblas.h>
+#include <mkl.h>
 #include <execution>
 #include <algorithm>
 
