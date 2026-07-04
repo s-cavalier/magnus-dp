@@ -216,6 +216,12 @@ namespace Dispatch {
         ONE, MANY, SUM
     };
 
+    inline constexpr std::array<std::string_view, 3> kernel_op_names{
+        "one",
+        "many",
+        "sum"
+    };
+
     constexpr KernelOp op_from_str( std::string_view str ) {
         if ( str == "one" || str == "ONE" ) return KernelOp::ONE;
         if ( str == "many" || str == "MANY" ) return KernelOp::MANY;
@@ -276,15 +282,19 @@ namespace Dispatch {
     struct KernelPlan {
         virtual ~KernelPlan() = default;
         virtual size_t divisibility_requirement() const = 0;
-        virtual void run(Dispatch::KernelOp op) = 0;
+        virtual void run() = 0;
     };
 
     template <Integrator Int>
     class TypedKernelPlan final : public KernelPlan {
         Params p;
+        kernel_dispatch_t<typename Int::allocator_t> kernel_ptr;
     
     public:
-        explicit TypedKernelPlan(Params params) : p( std::move(params) ) {}
+        explicit TypedKernelPlan(
+            Params params, 
+            kernel_dispatch_t<typename Int::allocator_t> kernel_ptr
+        ) : p( std::move(params) ), kernel_ptr(kernel_ptr) {}
 
         size_t divisibility_requirement() const override {
             return Int::divisibility_requirement();
@@ -302,15 +312,13 @@ namespace Dispatch {
             return scalar_count * sizeof(typename Int::numeric_t) + SCRATCH;
         }
 
-        void run( Dispatch::KernelOp op ) override {
-            size_t idx = static_cast<size_t>(op);
-            if ( idx >= kernels<Int>.size() ) throw std::invalid_argument("Invalid kernel operation");
+        void run() override {
             using NumT = typename Int::numeric_t;
 
             MemoryBuffer memory( required_bytes(p) );
             auto alloc = memory.get_allocator<NumT>();
 
-            kernels<Int>[idx](p, alloc);
+            kernel_ptr(p, alloc);
         }
     }; 
 

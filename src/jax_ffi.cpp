@@ -1,6 +1,5 @@
 #include "backendcomposer.hpp"
 
-#include <cstdint>
 #include <exception>
 #include <string_view>
 #include <type_traits>
@@ -17,51 +16,14 @@ namespace Magnus::JaxFfi {
 
 namespace {
 
-ffi::Error validate_matrix_output_shape(const ffi::AnyBuffer::Dimensions& dims, Dispatch::KernelOp op, size_t n, size_t dim) {
-    if (op == Dispatch::KernelOp::MANY) {
-        if (
-            dims.size() != 3
-            || static_cast<size_t>(dims[0]) != n
-            || static_cast<size_t>(dims[1]) != dim
-            || static_cast<size_t>(dims[2]) != dim
-        ) {
-            return ffi::Error::InvalidArgument("many output must have shape (n, dim, dim)");
-        }
-
-        return ffi::Error::Success();
-    }
-
-    if (dims.size() != 2 || static_cast<size_t>(dims[0]) != dim || static_cast<size_t>(dims[1]) != dim) {
-        return ffi::Error::InvalidArgument("one/sum output must have shape (dim, dim)");
-    }
-
-    return ffi::Error::Success();
-}
-
-ffi::Error validate_spacecurve_output_shape(const ffi::AnyBuffer::Dimensions& dims, Dispatch::KernelOp op, size_t n) {
-    if (op == Dispatch::KernelOp::MANY) {
-        if (dims.size() != 2 || static_cast<size_t>(dims[0]) != n || static_cast<size_t>(dims[1]) != 3) {
-            return ffi::Error::InvalidArgument("many spacecurve output must have shape (n, 3)");
-        }
-
-        return ffi::Error::Success();
-    }
-
-    if (dims.size() != 1 || static_cast<size_t>(dims[0]) != 3) {
-        return ffi::Error::InvalidArgument("one/sum spacecurve output must have shape (3,)");
-    }
-
-    return ffi::Error::Success();
-}
-
 template <Numeric NumT>
 ffi::Error matrix_impl(
     size_t n,
-    Dispatch::KernelOp op,
+    std::string_view op,
     double t0,
     double tf,
-    size_t matrix_backend_idx,
-    size_t integrator_idx,
+    std::string_view matrix_backend,
+    std::string_view integrator,
     size_t samples,
     size_t dim,
     ffi::AnyBuffer data,
@@ -76,8 +38,8 @@ ffi::Error matrix_impl(
         t0,
         tf,
         op,
-        matrix_backend_idx,
-        integrator_idx
+        matrix_backend,
+        integrator
     );
 
     return ffi::Error::Success();
@@ -86,10 +48,10 @@ ffi::Error matrix_impl(
 template <Numeric NumT>
 ffi::Error spacecurve_impl(
     size_t n,
-    Dispatch::KernelOp op,
+    std::string_view op,
     double t0,
     double tf,
-    size_t integrator_idx,
+    std::string_view integrator,
     size_t samples,
     ffi::AnyBuffer data,
     ffi::Result<ffi::AnyBuffer> out
@@ -102,7 +64,7 @@ ffi::Error spacecurve_impl(
         t0,
         tf,
         op,
-        integrator_idx
+        integrator
     );
 
     return ffi::Error::Success();
@@ -123,7 +85,7 @@ ffi::Error spacecurve_impl(
     }
 
 ffi::Error matrix_dispatch(
-    std::uint64_t n,
+    size_t n,
     std::string_view op_attr,
     double t0,
     double tf,
@@ -135,33 +97,20 @@ ffi::Error matrix_dispatch(
     try {
         if (data.element_type() != out->element_type()) return ffi::Error::InvalidArgument("input and output dtypes must match");
 
-        Dispatch::KernelOp op = Dispatch::op_from_str(op_attr);
-        size_t matrix_backend_idx = MatrixBackends::resolve(matrix_backend);
-        size_t integrator_idx = IntegratorBackends::resolve(integrator);
-
-        ffi::AnyBuffer::Dimensions dims = data.dimensions();
-        if (dims.size() != 3) return ffi::Error::InvalidArgument("matrix data must have shape (samples, dim, dim)");
-
-        size_t samples = static_cast<size_t>(dims[0]);
-        size_t rows = static_cast<size_t>(dims[1]);
-        size_t cols = static_cast<size_t>(dims[2]);
-        if (rows == 0 || rows != cols) return ffi::Error::InvalidArgument("matrix data must contain square matrices");
-
-        ffi::Error output_error = validate_matrix_output_shape( out->dimensions(), op, n, rows );
-
-        if (output_error.failure()) return output_error;
+        detail::MatrixInputShape input_shape = detail::matrix_input_shape(n, data.dimensions());
+        detail::validate_matrix_output_shape(op_attr, n, input_shape.dim, out->dimensions());
 
         MAGNUS_ELEMENT_TYPE_DISPATCH(
             data.element_type(),
             matrix_impl,
             n,
-            op,
+            op_attr,
             t0,
             tf,
-            matrix_backend_idx,
-            integrator_idx,
-            samples,
-            rows,
+            matrix_backend,
+            integrator,
+            input_shape.samples,
+            input_shape.dim,
             data,
             out
         );
@@ -173,7 +122,7 @@ ffi::Error matrix_dispatch(
 }
 
 ffi::Error spacecurve_dispatch(
-    std::uint64_t n,
+    size_t n,
     std::string_view op_attr,
     double t0,
     double tf,
@@ -183,29 +132,19 @@ ffi::Error spacecurve_dispatch(
 ) {
     try {
         if (data.element_type() != out->element_type()) return ffi::Error::InvalidArgument("input and output dtypes must match");
-        Dispatch::KernelOp op = Dispatch::op_from_str(op_attr);
-        size_t integrator_idx = IntegratorBackends::resolve(integrator);
 
-        ffi::AnyBuffer::Dimensions dims = data.dimensions();
-        if (dims.size() != 2) return ffi::Error::InvalidArgument( "spacecurve data must have shape (samples, 3)" );
-
-        size_t samples = static_cast<size_t>(dims[0]);
-        size_t width = static_cast<size_t>(dims[1]);
-        if (width != 3) return ffi::Error::InvalidArgument( "spacecurve data must have shape (samples, 3)" );
-
-        ffi::Error output_error = validate_spacecurve_output_shape( out->dimensions(), op, n);
-
-        if (output_error.failure()) return output_error;
+        detail::SpaceCurveInputShape input_shape = detail::spacecurve_input_shape(n, data.dimensions());
+        detail::validate_spacecurve_output_shape(op_attr, n, out->dimensions());
 
         MAGNUS_ELEMENT_TYPE_DISPATCH(
             data.element_type(),
             spacecurve_impl,
             n,
-            op,
+            op_attr,
             t0,
             tf,
-            integrator_idx,
-            samples,
+            integrator,
+            input_shape.samples,
             data,
             out
         );
@@ -222,7 +161,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     magnus_matrix,
     matrix_dispatch,
     ffi::Ffi::Bind()
-        .Attr<std::uint64_t>("n")
+        .Attr<size_t>("n")
         .Attr<std::string_view>("op")
         .Attr<double>("t0")
         .Attr<double>("tf")
@@ -236,7 +175,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     magnus_spacecurve,
     spacecurve_dispatch,
     ffi::Ffi::Bind()
-        .Attr<std::uint64_t>("n")
+        .Attr<size_t>("n")
         .Attr<std::string_view>("op")
         .Attr<double>("t0")
         .Attr<double>("tf")

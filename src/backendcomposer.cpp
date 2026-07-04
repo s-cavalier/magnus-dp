@@ -1,4 +1,5 @@
 #include "backendcomposer.hpp"
+#include "dispatch.hpp"
 
 #include <cstddef>
 #include <memory>
@@ -19,28 +20,31 @@ void Magnus::initialize_default_gl_table() {
     });
 }
 
-std::unique_ptr<Magnus::KernelPlan> Magnus::make_plan(Params& p, size_t num_idx, size_t mat_idx, size_t int_idx) {
+std::unique_ptr<Magnus::KernelPlan> Magnus::make_plan(Params& p, size_t num_idx, size_t mat_idx, size_t int_idx, Dispatch::KernelOp op) {
     initialize_default_gl_table();
 
     if ( p.n > 1 ) {
         size_t required_order = (p.n + 3) / 2;
         if ( required_order > GLTable::get()->max_order() ) throw std::invalid_argument("requested magnus order exceeds GL table. Consider providing a larger table.");
     }
+
+    const size_t kernel_idx = static_cast<size_t>(op);
     
-    return NumBackends::dispatch( num_idx, p, [&p, &mat_idx, &int_idx]<Dispatchable NumSpec>() -> std::unique_ptr<KernelPlan> {
+    return NumBackends::dispatch( num_idx, p, [&]<Dispatchable NumSpec>() -> std::unique_ptr<KernelPlan> {
         using NumT = typename NumSpec::type;
 
-        return MatrixBackends::dispatch( mat_idx, p, [&p, &int_idx]<Dispatchable MatSpec> () -> std::unique_ptr<KernelPlan> {
+        return MatrixBackends::dispatch( mat_idx, p, [&]<Dispatchable MatSpec> () -> std::unique_ptr<KernelPlan> {
             using MatPolicy = typename MatSpec::template type<NumT>;
             static_assert(MatrixPolicy<MatPolicy>);
 
-            return IntegratorBackends::dispatch( int_idx, p, [&p]<Dispatchable IntSpec> () -> std::unique_ptr<KernelPlan> {
+            return IntegratorBackends::dispatch( int_idx, p, [&]<Dispatchable IntSpec> () -> std::unique_ptr<KernelPlan> {
                 using Int = typename IntSpec::template type<NumT, MatPolicy>;
                 static_assert( Integrator<Int> );
 
                 if ( (p.samples - 1) % Int::divisibility_requirement() != 0 ) throw std::invalid_argument("sample interval count violates integrator divisibility (a power of 2 is recommneded; i.e., total samples is 2^k + 1 for some k > 4)");
+                if ( kernel_idx >= kernels<Int>.size() ) throw std::invalid_argument("invalid kernel operation");
 
-                return std::make_unique< TypedKernelPlan<Int> >( std::move(p) );
+                return std::make_unique< TypedKernelPlan<Int> >( std::move(p), kernels<Int>[kernel_idx] );
             } );
 
         });

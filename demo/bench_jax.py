@@ -19,10 +19,16 @@ from scipy.integrate import solve_ivp
 
 Z = np.array([[1, 0], [0, -1]])
 X = np.array([[0, 1], [1, 0]])
+Z_JAX = jnp.asarray(Z)
+X_JAX = jnp.asarray(X)
 
 
 def Y(t):
     return t * X + (1 - t) * Z
+
+
+def Y_jax(t):
+    return t[:, None, None] * X_JAX + (1 - t)[:, None, None] * Z_JAX
 
 
 def solve_matrix_ivp_at(coef, t, *, rtol=1e-10, atol=1e-12):
@@ -68,9 +74,6 @@ def median_runtime(fn, repeats=7):
 
 T = 1.0
 n_samples = 101
-t_samples = np.linspace(0, T, n_samples)
-a_samples_np = np.array([Y(t) for t in t_samples], dtype=np.float64)
-a_samples = jnp.asarray(a_samples_np)
 
 ivp_time, ivp_res = median_runtime(
     lambda: solve_matrix_ivp_at(Y, T, rtol=1e-12, atol=1e-14)
@@ -84,17 +87,19 @@ print("order | jax_magnus | jax_expm  | total     | speedup vs ivp | max abs err
 
 for n_order in [6, 8, 10, 12, 14, 16, 18, 20, 22]:
     jax_magnus_sum = jax.jit(
-        lambda data, n_order=n_order: magnus_jax.sum_s(
+        lambda n_order=n_order: magnus_jax.compute(
             n_order,
-            data,
+            Y_jax,
             0.0,
             T,
+            n_samples,
+            op="sum",
             matrix_backend="Fixed2",
             integrator="Boole",
         )
     )
 
-    magnus_time, omega = median_runtime(lambda: jax_magnus_sum(a_samples))
+    magnus_time, omega = median_runtime(jax_magnus_sum)
     expm_time, exp_res = median_runtime(lambda: jax_expm(omega))
 
     exp_res_np = np.asarray(exp_res)

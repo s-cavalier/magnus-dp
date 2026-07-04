@@ -105,7 +105,7 @@ print("order | magnus_sum | expm      | total     | speedup vs ivp | max abs err
 
 for n_order in [6, 8, 10, 12, 14, 16, 18, 20, 22]:
     magnus_time, omega = median_runtime(
-        lambda: magnus.sum_s(n=n_order, data=a_samples, t0=0, tf=T)
+        lambda: magnus.compute(n=n_order, f=Y, t0=0, tf=T, samples=n_samples)
     )
 
     expm_time, exp_res = median_runtime(lambda: expm(omega))

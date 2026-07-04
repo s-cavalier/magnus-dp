@@ -35,26 +35,26 @@ def spacecurve_values(t, dtype=np.float64):
     return out
 
 
-def packed_spacecurve_values(t, dtype=np.float64):
-    values = spacecurve_values(t, dtype=dtype)
-    out = np.empty((values.shape[0], 4), dtype=dtype)
-    out[:, 0] = 0
-    out[:, 1:] = values
-    return out.reshape(values.shape[0], 2, 2)
-
-
 def spacecurve_value(t, dtype=np.float64):
     return spacecurve_values(np.asarray([t]), dtype=dtype)[0]
 
 
-def assert_close(actual, expected):
-    np.testing.assert_allclose(actual, expected, rtol=1e-11, atol=1e-12)
-
-
-def test_sampled_api_exports_core_entrypoints():
+def test_public_api_exports_only_compute_entrypoints():
     assert set(magnus.__all__) == {
         "max_order",
+        "numeric_backends",
+        "matrix_backends",
+        "integrators",
+        "ops",
         "replace_gl_table",
+        "compute",
+        "compute_sc",
+    }
+    assert callable(magnus.replace_gl_table)
+    assert callable(magnus.compute)
+    assert callable(magnus.compute_sc)
+
+    for removed in [
         "one_s",
         "many_s",
         "sum_s",
@@ -67,242 +67,29 @@ def test_sampled_api_exports_core_entrypoints():
         "one_sc",
         "many_sc",
         "sum_sc",
-    }
-    assert callable(magnus.replace_gl_table)
-    assert callable(magnus.one_s)
-    assert callable(magnus.many_s)
-    assert callable(magnus.sum_s)
-    assert callable(magnus.one_sc_s)
-    assert callable(magnus.many_sc_s)
-    assert callable(magnus.sum_sc_s)
+    ]:
+        assert not hasattr(magnus, removed)
 
 
-def test_vectorized_callable_api_matches_sampled_api():
-    t0 = -0.25
-    tf = 1.25
-    samples = 9
-    n = 3
-    seen = []
-
-    def f(t):
-        seen.append(np.array(t, copy=True))
-        return matrix_values(t)
-
-    t = np.linspace(t0, tf, samples)
-    data = matrix_values(t)
-
-    one = magnus.one(
-        n,
-        f,
-        t0,
-        tf,
-        samples,
-        matrix_backend="Manual",
-        integrator="Riemann",
-    )
-    many = magnus.many(
-        n,
-        f,
-        t0,
-        tf,
-        samples,
-        matrix_backend="Manual",
-        integrator="Riemann",
-    )
-    total = magnus.sum(
-        n,
-        f,
-        t0,
-        tf,
-        samples,
-        matrix_backend="Manual",
-        integrator="Riemann",
-    )
-
-    assert len(seen) == 3
-    for values in seen:
-        np.testing.assert_array_equal(values, t)
-
-    assert_close(one, magnus.one_s(n, data, t0, tf, "Manual", "Riemann"))
-    assert_close(many, magnus.many_s(n, data, t0, tf, "Manual", "Riemann"))
-    assert_close(total, magnus.sum_s(n, data, t0, tf, "Manual", "Riemann"))
+def test_dispatch_metadata_is_discoverable():
+    assert magnus.ops() == ("one", "many", "sum")
+    assert "Manual" in magnus.matrix_backends()
+    assert "SpaceCurve" in magnus.matrix_backends()
+    assert "Auto" in magnus.matrix_backends()
+    assert "Riemann" in magnus.integrators()
+    assert "Auto" in magnus.integrators()
+    assert "float" in magnus.numeric_backends()
+    assert "double" in magnus.numeric_backends()
+    assert "Auto" not in magnus.numeric_backends()
 
 
-def test_pointwise_callable_api_matches_sampled_api():
-    t0 = 0.0
-    tf = 2.0
-    samples = 9
-    n = 2
-    seen = []
-
-    def f(t):
-        assert isinstance(t, float)
-        seen.append(t)
-        return matrix_value(t)
-
-    t = np.linspace(t0, tf, samples)
-    data = matrix_values(t)
-
-    actual = magnus.sum(
-        n,
-        f,
-        t0,
-        tf,
-        samples,
-        vectorized=False,
-        matrix_backend="Fixed2",
-        integrator="Trapezoid",
-    )
-    expected = magnus.sum_s(n, data, t0, tf, "Fixed2", "Trapezoid")
-
-    np.testing.assert_array_equal(seen, t)
-    assert_close(actual, expected)
-
-
-def test_spacecurve_vectorized_callable_api_matches_packed_sampled_api():
-    t0 = -0.25
-    tf = 1.25
-    samples = 9
-    n = 4
-    seen = []
-
-    def f(t):
-        seen.append(np.array(t, copy=True))
-        return spacecurve_values(t)
-
-    t = np.linspace(t0, tf, samples)
-    data = spacecurve_values(t)
-    packed = packed_spacecurve_values(t)
-
-    one = magnus.one_sc(
-        n,
-        f,
-        t0,
-        tf,
-        samples,
-        integrator="Riemann",
-    )
-    many = magnus.many_sc(
-        n,
-        f,
-        t0,
-        tf,
-        samples,
-        integrator="Riemann",
-    )
-    total = magnus.sum_sc(
-        n,
-        f,
-        t0,
-        tf,
-        samples,
-        integrator="Riemann",
-    )
-
-    assert len(seen) == 3
-    for values in seen:
-        np.testing.assert_array_equal(values, t)
-
-    assert one.shape == (3,)
-    assert many.shape == (n, 3)
-    assert total.shape == (3,)
-    assert_close(one, magnus.one_sc_s(n, data, t0, tf, "Riemann"))
-    assert_close(many, magnus.many_sc_s(n, data, t0, tf, "Riemann"))
-    assert_close(total, magnus.sum_sc_s(n, data, t0, tf, "Riemann"))
-    assert_close(
-        many,
-        magnus.many_s(n, packed, t0, tf, "SpaceCurve", "Riemann").reshape(n, 4)[:, 1:],
-    )
-
-
-def test_spacecurve_pointwise_callable_api_matches_sampled_api():
-    t0 = 0.0
-    tf = 2.0
-    samples = 9
-    n = 3
-    seen = []
-
-    def f(t):
-        assert isinstance(t, float)
-        seen.append(t)
-        return spacecurve_value(t)
-
-    t = np.linspace(t0, tf, samples)
-    data = spacecurve_values(t)
-
-    actual = magnus.sum_sc(
-        n,
-        f,
-        t0,
-        tf,
-        samples,
-        vectorized=False,
-        integrator="Trapezoid",
-    )
-    expected = magnus.sum_sc_s(n, data, t0, tf, "Trapezoid")
-
-    np.testing.assert_array_equal(seen, t)
-    assert_close(actual, expected)
-
-
-@pytest.mark.parametrize("dtype", [np.float32, np.float64, np.complex64, np.complex128])
-def test_callable_dtype_controls_sample_dtype(dtype):
-    def f(t):
-        data = matrix_values(t, dtype=np.float64)
-        if np.issubdtype(np.dtype(dtype), np.complexfloating):
-            data = data + 0.25j * data
-        return data
-
-    actual = magnus.one(
-        1,
-        f,
-        0.0,
-        1.0,
-        9,
-        dtype=dtype,
-        matrix_backend="Manual",
-        integrator="Riemann",
-    )
-
-    assert actual.dtype == np.dtype(dtype)
-
-    data = np.asarray(f(np.linspace(0.0, 1.0, 9)), dtype=dtype)
-    expected = magnus.one_s(1, data, 0.0, 1.0, "Manual", "Riemann")
-    np.testing.assert_allclose(actual, expected)
-
-
-@pytest.mark.parametrize("dtype", [np.float32, np.float64, np.complex64, np.complex128])
-def test_spacecurve_callable_dtype_controls_sample_dtype(dtype):
-    def f(t):
-        data = spacecurve_values(t, dtype=np.float64)
-        if np.issubdtype(np.dtype(dtype), np.complexfloating):
-            data = data + 0.25j * data
-        return data
-
-    actual = magnus.one_sc(
-        1,
-        f,
-        0.0,
-        1.0,
-        9,
-        dtype=dtype,
-        integrator="Riemann",
-    )
-
-    assert actual.dtype == np.dtype(dtype)
-
-    data = np.asarray(f(np.linspace(0.0, 1.0, 9)), dtype=dtype)
-    expected = magnus.one_sc_s(1, data, 0.0, 1.0, "Riemann")
-    np.testing.assert_allclose(actual, expected)
-
-
-def test_callable_api_preserves_operation_shapes():
+def test_matrix_compute_ops_and_shapes():
     def f(t):
         return matrix_values(t)
 
-    one = magnus.one(4, f, 0.0, 1.0, 9, integrator="Boole")
-    many = magnus.many(4, f, 0.0, 1.0, 9, integrator="Boole")
-    total = magnus.sum(4, f, 0.0, 1.0, 9, integrator="Boole")
+    one = magnus.compute(4, f, 0.0, 1.0, 9, op="one", integrator="Boole")
+    many = magnus.compute(4, f, 0.0, 1.0, 9, op="many", integrator="Boole")
+    total = magnus.compute(4, f, 0.0, 1.0, 9, op="sum", integrator="Boole")
 
     assert one.shape == (2, 2)
     assert many.shape == (4, 2, 2)
@@ -311,21 +98,158 @@ def test_callable_api_preserves_operation_shapes():
     np.testing.assert_allclose(total, np.sum(many, axis=0), rtol=1e-11, atol=1e-12)
 
 
-def test_callable_dispatch_kwargs_are_forwarded():
+def test_matrix_vectorized_and_pointwise_sampling_match():
+    t0 = 0.0
+    tf = 2.0
+    samples = 9
+    n = 2
+    seen = []
+
+    def pointwise(t):
+        assert isinstance(t, float)
+        seen.append(t)
+        return matrix_value(t)
+
+    vectorized = magnus.compute(
+        n,
+        matrix_values,
+        t0,
+        tf,
+        samples,
+        op="sum",
+        matrix_backend="Fixed2",
+        integrator="Trapezoid",
+    )
+    point = magnus.compute(
+        n,
+        pointwise,
+        t0,
+        tf,
+        samples,
+        op="sum",
+        vectorized=False,
+        matrix_backend="Fixed2",
+        integrator="Trapezoid",
+    )
+
+    np.testing.assert_array_equal(seen, np.linspace(t0, tf, samples))
+    np.testing.assert_allclose(point, vectorized, rtol=1e-11, atol=1e-12)
+
+
+def test_spacecurve_compute_ops_and_shapes():
+    def f(t):
+        return spacecurve_values(t)
+
+    one = magnus.compute_sc(4, f, 0.0, 1.0, 9, op="one", integrator="Riemann")
+    many = magnus.compute_sc(4, f, 0.0, 1.0, 9, op="many", integrator="Riemann")
+    total = magnus.compute_sc(4, f, 0.0, 1.0, 9, op="sum", integrator="Riemann")
+
+    assert one.shape == (3,)
+    assert many.shape == (4, 3)
+    assert total.shape == (3,)
+    np.testing.assert_allclose(one, many[3], rtol=1e-11, atol=1e-12)
+    np.testing.assert_allclose(total, np.sum(many, axis=0), rtol=1e-11, atol=1e-12)
+
+
+def test_spacecurve_vectorized_and_pointwise_sampling_match():
+    t0 = 0.0
+    tf = 2.0
+    samples = 9
+    n = 3
+    seen = []
+
+    def pointwise(t):
+        assert isinstance(t, float)
+        seen.append(t)
+        return spacecurve_value(t)
+
+    vectorized = magnus.compute_sc(
+        n,
+        spacecurve_values,
+        t0,
+        tf,
+        samples,
+        op="sum",
+        integrator="Trapezoid",
+    )
+    point = magnus.compute_sc(
+        n,
+        pointwise,
+        t0,
+        tf,
+        samples,
+        op="sum",
+        vectorized=False,
+        integrator="Trapezoid",
+    )
+
+    np.testing.assert_array_equal(seen, np.linspace(t0, tf, samples))
+    np.testing.assert_allclose(point, vectorized, rtol=1e-11, atol=1e-12)
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64, np.complex64, np.complex128])
+def test_compute_dtype_controls_sample_dtype(dtype):
+    def f(t):
+        data = matrix_values(t, dtype=np.float64)
+        if np.issubdtype(np.dtype(dtype), np.complexfloating):
+            data = data + 0.25j * data
+        return data
+
+    actual = magnus.compute(
+        1,
+        f,
+        0.0,
+        1.0,
+        9,
+        op="one",
+        dtype=dtype,
+        matrix_backend="Manual",
+        integrator="Riemann",
+    )
+
+    assert actual.dtype == np.dtype(dtype)
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64, np.complex64, np.complex128])
+def test_compute_sc_dtype_controls_sample_dtype(dtype):
+    def f(t):
+        data = spacecurve_values(t, dtype=np.float64)
+        if np.issubdtype(np.dtype(dtype), np.complexfloating):
+            data = data + 0.25j * data
+        return data
+
+    actual = magnus.compute_sc(
+        1,
+        f,
+        0.0,
+        1.0,
+        9,
+        op="one",
+        dtype=dtype,
+        integrator="Riemann",
+    )
+
+    assert actual.dtype == np.dtype(dtype)
+
+
+def test_dispatch_kwargs_are_forwarded():
     def f(t):
         return np.zeros((np.asarray(t).size, 3, 3), dtype=np.float64)
 
     with pytest.raises(ValueError, match="invalid dispatch option"):
-        magnus.one(1, f, 0.0, 1.0, 9, matrix_backend="Fixed2")
+        magnus.compute(1, f, 0.0, 1.0, 9, op="one", matrix_backend="Fixed2")
 
     with pytest.raises(ValueError, match="dispatch name"):
-        magnus.one(1, f, 0.0, 1.0, 9, matrix_backend="Missing")
+        magnus.compute(1, f, 0.0, 1.0, 9, op="one", matrix_backend="Missing")
 
     with pytest.raises(ValueError, match="dispatch name"):
-        magnus.one(1, f, 0.0, 1.0, 9, integrator="Missing")
+        magnus.compute(1, f, 0.0, 1.0, 9, op="one", integrator="Missing")
+
+    with pytest.raises(ValueError, match="deduce kernel op"):
+        magnus.compute(1, f, 0.0, 1.0, 9, op="missing")
 
 
-def test_callable_sample_count_is_validated_before_calling_function():
+def test_sample_count_is_validated_by_core_after_sampling():
     called = False
 
     def f(t):
@@ -333,13 +257,13 @@ def test_callable_sample_count_is_validated_before_calling_function():
         called = True
         return matrix_values(t)
 
-    with pytest.raises(ValueError, match="samples must be at least 2"):
-        magnus.one(1, f, 0.0, 1.0, 1)
+    with pytest.raises(ValueError, match="at least two samples"):
+        magnus.compute(1, f, 0.0, 1.0, 1)
 
-    assert not called
+    assert called
 
 
-def test_spacecurve_callable_sample_count_is_validated_before_calling_function():
+def test_spacecurve_sample_count_is_validated_by_core_after_sampling():
     called = False
 
     def f(t):
@@ -347,10 +271,10 @@ def test_spacecurve_callable_sample_count_is_validated_before_calling_function()
         called = True
         return spacecurve_values(t)
 
-    with pytest.raises(ValueError, match="samples must be at least 2"):
-        magnus.one_sc(1, f, 0.0, 1.0, 1)
+    with pytest.raises(ValueError, match="at least two samples"):
+        magnus.compute_sc(1, f, 0.0, 1.0, 1)
 
-    assert not called
+    assert called
 
 
 @pytest.mark.parametrize(
@@ -365,8 +289,8 @@ def test_callable_output_shape_is_validated(bad_result):
     def f(t):
         return bad_result
 
-    with pytest.raises(ValueError, match="shape"):
-        magnus.one(1, f, 0.0, 1.0, 9)
+    with pytest.raises(ValueError):
+        magnus.compute(1, f, 0.0, 1.0, 9)
 
 
 @pytest.mark.parametrize(
@@ -381,28 +305,33 @@ def test_spacecurve_callable_output_shape_is_validated(bad_result):
     def f(t):
         return bad_result
 
-    with pytest.raises(ValueError, match="shape"):
-        magnus.one_sc(1, f, 0.0, 1.0, 9)
+    with pytest.raises(ValueError):
+        magnus.compute_sc(1, f, 0.0, 1.0, 9)
 
 
-def test_sampled_api_still_validates_core_inputs():
-    data = matrix_values(np.linspace(0.0, 1.0, 9))
-
-    with pytest.raises(ValueError, match="n must be at least 1"):
-        magnus.one_s(0, data, 0.0, 1.0)
-
-    with pytest.raises(TypeError, match="supports dtypes"):
-        magnus.one_s(1, data.astype(np.int64), 0.0, 1.0)
-
-
-def test_spacecurve_sampled_api_still_validates_core_inputs():
-    data = spacecurve_values(np.linspace(0.0, 1.0, 9))
+def test_core_inputs_are_validated_through_public_compute():
+    def bad_dtype(t):
+        return matrix_values(t).astype(np.int64)
 
     with pytest.raises(ValueError, match="n must be at least 1"):
-        magnus.one_sc_s(0, data, 0.0, 1.0)
+        magnus.compute(0, matrix_values, 0.0, 1.0, 9)
 
     with pytest.raises(TypeError, match="supports dtypes"):
-        magnus.one_sc_s(1, data.astype(np.int64), 0.0, 1.0)
+        magnus.compute(1, bad_dtype, 0.0, 1.0, 9)
+
+
+def test_spacecurve_core_inputs_are_validated_through_public_compute():
+    def bad_dtype(t):
+        return spacecurve_values(t).astype(np.int64)
+
+    def bad_width(t):
+        return np.zeros((np.asarray(t).size, 4), dtype=np.float64)
+
+    with pytest.raises(ValueError, match="n must be at least 1"):
+        magnus.compute_sc(0, spacecurve_values, 0.0, 1.0, 9)
+
+    with pytest.raises(TypeError, match="supports dtypes"):
+        magnus.compute_sc(1, bad_dtype, 0.0, 1.0, 9)
 
     with pytest.raises(ValueError, match="shape"):
-        magnus.one_sc_s(1, np.zeros((9, 4), dtype=np.float64), 0.0, 1.0)
+        magnus.compute_sc(1, bad_width, 0.0, 1.0, 9)

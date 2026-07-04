@@ -1,5 +1,6 @@
 import operator
-from typing import Any
+from functools import partial
+from typing import Any, Callable
 
 import numpy as np
 
@@ -13,12 +14,8 @@ except ImportError as err:
 
 __all__ = [
     "register_ffi_targets",
-    "one_s",
-    "many_s",
-    "sum_s",
-    "one_sc_s",
-    "many_sc_s",
-    "sum_sc_s",
+    "compute",
+    "compute_sc",
 ]
 
 _REGISTERED = False
@@ -27,8 +24,7 @@ _REGISTERED = False
 def register_ffi_targets() -> None:
     global _REGISTERED
 
-    if _REGISTERED:
-        return
+    if _REGISTERED: return
 
     if not hasattr(_core, "registrations"):
         raise RuntimeError(
@@ -44,23 +40,16 @@ def register_ffi_targets() -> None:
 
 def _matrix_output_type(op: str, n: int, data: Any):
     shape = tuple(data.shape)
-    if len(shape) != 3 or shape[1] != shape[2]:
-        raise ValueError("data must have shape (samples, dim, dim)")
+    if len(shape) < 2: raise ValueError("cannot infer matrix output shape from data")
 
     dim = shape[1]
-    if op == "many":
-        return jax.ShapeDtypeStruct((operator.index(n), dim, dim), data.dtype)
+    if op == "many": return jax.ShapeDtypeStruct((operator.index(n), dim, dim), data.dtype)
 
     return jax.ShapeDtypeStruct((dim, dim), data.dtype)
 
 
 def _spacecurve_output_type(op: str, n: int, data: Any):
-    shape = tuple(data.shape)
-    if len(shape) != 2 or shape[1] != 3:
-        raise ValueError("data must have shape (samples, 3)")
-
-    if op == "many":
-        return jax.ShapeDtypeStruct((operator.index(n), 3), data.dtype)
+    if op == "many": return jax.ShapeDtypeStruct((operator.index(n), 3), data.dtype)
 
     return jax.ShapeDtypeStruct((3,), data.dtype)
 
@@ -94,28 +83,212 @@ def _spacecurve_call(op: str, n: int, data: Any, t0: float, tf: float, integrato
     )
 
 
-def one_s(n: int, data: Any, t0: float, tf: float, matrix_backend: str = "Auto", integrator: str = "Auto"):
-    return _matrix_call("one", n, data, t0, tf, matrix_backend, integrator)
+def _matrix_fwd(
+    data: Any,
+    op: str,
+    n: int,
+    t0: float,
+    tf: float,
+    matrix_backend: str,
+    integrator: str,
+):
+    data = jnp.asarray(data)
+    out = _matrix_call(op, n, data, t0, tf, matrix_backend, integrator)
+    return out, (data,)
 
 
-def many_s(n: int, data: Any, t0: float, tf: float, matrix_backend: str = "Auto", integrator: str = "Auto"):
-    return _matrix_call("many", n, data, t0, tf, matrix_backend, integrator)
+def _spacecurve_fwd(
+    data: Any,
+    op: str,
+    n: int,
+    t0: float,
+    tf: float,
+    integrator: str,
+):
+    data = jnp.asarray(data)
+    out = _spacecurve_call(op, n, data, t0, tf, integrator)
+    return out, (data,)
 
 
-def sum_s(n: int, data: Any, t0: float, tf: float, matrix_backend: str = "Auto", integrator: str = "Auto"):
-    return _matrix_call("sum", n, data, t0, tf, matrix_backend, integrator)
+@partial(jax.custom_vjp, nondiff_argnums=(1, 2, 3, 4, 5, 6))
+def _matrix_call_vjp(
+    data: Any,
+    op: str,
+    n: int,
+    t0: float,
+    tf: float,
+    matrix_backend: str,
+    integrator: str,
+):
+    return _matrix_call(op, n, data, t0, tf, matrix_backend, integrator)
 
 
-def one_sc_s(n: int, data: Any, t0: float, tf: float, integrator: str = "Auto"):
-    return _spacecurve_call("one", n, data, t0, tf, integrator)
+def _matrix_bwd(
+    op: str,
+    n: int,
+    t0: float,
+    tf: float,
+    matrix_backend: str,
+    integrator: str,
+    residuals: tuple[Any, ...],
+    cotangent: Any,
+):
+    del op, n, t0, tf, matrix_backend, integrator, residuals, cotangent
+    raise NotImplementedError(
+        "magnus.jax reverse-mode gradients need the C++ VJP FFI target, "
+        "which has not been implemented yet."
+    )
 
 
-def many_sc_s(n: int, data: Any, t0: float, tf: float, integrator: str = "Auto"):
-    return _spacecurve_call("many", n, data, t0, tf, integrator)
+_matrix_call_vjp.defvjp(_matrix_fwd, _matrix_bwd)
 
 
-def sum_sc_s(n: int, data: Any, t0: float, tf: float, integrator: str = "Auto"):
-    return _spacecurve_call("sum", n, data, t0, tf, integrator)
+@partial(jax.custom_vjp, nondiff_argnums=(1, 2, 3, 4, 5))
+def _spacecurve_call_vjp(
+    data: Any,
+    op: str,
+    n: int,
+    t0: float,
+    tf: float,
+    integrator: str,
+):
+    return _spacecurve_call(op, n, data, t0, tf, integrator)
+
+
+def _spacecurve_bwd(
+    op: str,
+    n: int,
+    t0: float,
+    tf: float,
+    integrator: str,
+    residuals: tuple[Any, ...],
+    cotangent: Any,
+):
+    del op, n, t0, tf, integrator, residuals, cotangent
+    raise NotImplementedError(
+        "magnus.jax reverse-mode gradients need the C++ VJP FFI target, "
+        "which has not been implemented yet."
+    )
+
+
+_spacecurve_call_vjp.defvjp(_spacecurve_fwd, _spacecurve_bwd)
+
+
+def _sample_callable(
+    f: Callable,
+    t0: float,
+    tf: float,
+    samples: int,
+    *,
+    dtype: Any = None,
+    vectorized: bool = True,
+):
+    sample_count = operator.index(samples)
+    t = jnp.linspace(t0, tf, sample_count)
+    values = f(t) if vectorized else jax.vmap(f)(t)
+    return jnp.asarray(values, dtype=dtype)
+
+
+def _sample_spacecurve_callable(
+    f: Callable,
+    t0: float,
+    tf: float,
+    samples: int,
+    *,
+    dtype: Any = None,
+    vectorized: bool = True,
+):
+    sample_count = operator.index(samples)
+    t = jnp.linspace(t0, tf, sample_count)
+    values = f(t) if vectorized else jax.vmap(f)(t)
+    return jnp.asarray(values, dtype=dtype)
+
+
+def _compute_sampled(
+    n: int,
+    data: Any,
+    t0: float,
+    tf: float,
+    *,
+    op: str = "sum",
+    matrix_backend: str = "Auto",
+    integrator: str = "Auto",
+):
+    return _matrix_call_vjp(data, op, n, t0, tf, matrix_backend, integrator)
+
+
+def _compute_sc_sampled(
+    n: int,
+    data: Any,
+    t0: float,
+    tf: float,
+    *,
+    op: str = "sum",
+    integrator: str = "Auto",
+):
+    return _spacecurve_call_vjp(data, op, n, t0, tf, integrator)
+
+
+def compute(
+    n: int,
+    f: Callable,
+    t0: float,
+    tf: float,
+    samples: int,
+    *,
+    op: str = "sum",
+    dtype: Any = None,
+    vectorized: bool = True,
+    matrix_backend: str = "Auto",
+    integrator: str = "Auto",
+):
+    data = _sample_callable(
+        f,
+        t0,
+        tf,
+        samples,
+        dtype=dtype,
+        vectorized=vectorized,
+    )
+    return _compute_sampled(
+        n,
+        data,
+        t0,
+        tf,
+        op=op,
+        matrix_backend=matrix_backend,
+        integrator=integrator,
+    )
+
+
+def compute_sc(
+    n: int,
+    f: Callable,
+    t0: float,
+    tf: float,
+    samples: int,
+    *,
+    op: str = "sum",
+    dtype: Any = None,
+    vectorized: bool = True,
+    integrator: str = "Auto",
+):
+    data = _sample_spacecurve_callable(
+        f,
+        t0,
+        tf,
+        samples,
+        dtype=dtype,
+        vectorized=vectorized,
+    )
+    return _compute_sc_sampled(
+        n,
+        data,
+        t0,
+        tf,
+        op=op,
+        integrator=integrator,
+    )
 
 
 register_ffi_targets()
