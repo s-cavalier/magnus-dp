@@ -72,6 +72,23 @@ def median_runtime(fn, repeats=7):
     return float(np.median(times)), result
 
 
+def compile_runtime(fn):
+    t_start = perf_counter()
+    compiled = fn.lower().compile()
+    return perf_counter() - t_start, compiled
+
+
+def median_compiled_runtime(compiled, repeats=7):
+    block_until_ready(compiled())
+    times = []
+    for _ in range(repeats):
+        t_start = perf_counter()
+        result = compiled()
+        block_until_ready(result)
+        times.append(perf_counter() - t_start)
+    return float(np.median(times)), result
+
+
 T = 1.0
 n_samples = 101
 
@@ -83,7 +100,10 @@ jax_expm = jax.jit(expm)
 
 print(f"Samples: {n_samples}")
 print(f"SciPy solve_ivp runtime: {ivp_time:.6f}s")
-print("order | jax_magnus | jax_expm  | total     | speedup vs ivp | max abs err")
+print(
+    "order | compile   | jax_magnus | jax_expm  | total     | "
+    "speedup vs ivp | max abs err"
+)
 
 for n_order in [6, 8, 10, 12, 14, 16, 18, 20, 22]:
     jax_magnus_sum = jax.jit(
@@ -99,7 +119,8 @@ for n_order in [6, 8, 10, 12, 14, 16, 18, 20, 22]:
         )
     )
 
-    magnus_time, omega = median_runtime(jax_magnus_sum)
+    compile_time, compiled_magnus_sum = compile_runtime(jax_magnus_sum)
+    magnus_time, omega = median_compiled_runtime(compiled_magnus_sum)
     expm_time, exp_res = median_runtime(lambda: jax_expm(omega))
 
     exp_res_np = np.asarray(exp_res)
@@ -110,6 +131,7 @@ for n_order in [6, 8, 10, 12, 14, 16, 18, 20, 22]:
 
     print(
         f"{n_order:5d} | "
+        f"{compile_time:9.6f}s | "
         f"{magnus_time:10.6f}s | "
         f"{expm_time:9.6f}s | "
         f"{total_time:9.6f}s | "

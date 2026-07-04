@@ -36,6 +36,10 @@ def get_H_func(k, w0, epsilon, delta, v0, T0):
 def Y(t):
     return t * X + (1 - t) * Z
 
+def Y_samples(t):
+    t = np.asarray(t)
+    return t[:, None, None] * X + (1 - t)[:, None, None] * Z
+
 def solve_matrix_ivp_at(coef, t, *, rtol=1e-10, atol=1e-12):
     y0 = np.asarray(coef(0.0), dtype=np.float64)
     dim = y0.shape[0]
@@ -71,30 +75,8 @@ def median_runtime(fn, repeats=7):
         times.append(perf_counter() - t_start)
     return float(np.median(times)), result
 
-
-def omega2_bruteforce(A, t0, tf, sample_len, dtype=np.float64):
-    dt = (tf - t0) / sample_len
-    ts = t0 + dt * np.arange(sample_len)
-
-    mats = [np.asarray(A(t), dtype=dtype) for t in ts]
-    d = mats[0].shape[0]
-
-    omega = np.zeros((d, d), dtype=dtype)
-
-    for i in tqdm(range(sample_len)):
-        A1 = mats[i]
-        for j in range(i):
-            A2 = mats[j]
-            omega += A1 @ A2 - A2 @ A1
-
-    return 0.5 * (dt ** 2) * omega
-
 T = 1
-
 n_samples = 101
-t_samples = np.linspace(0, T, n_samples)
-a_samples = np.array([Y(t) for t in t_samples])
-
 ivp_time, ivp_res = median_runtime(
     lambda: solve_matrix_ivp_at(Y, T, rtol=1e-12, atol=1e-14)
 )
@@ -105,7 +87,7 @@ print("order | magnus_sum | expm      | total     | speedup vs ivp | max abs err
 
 for n_order in [6, 8, 10, 12, 14, 16, 18, 20, 22]:
     magnus_time, omega = median_runtime(
-        lambda: magnus.compute(n=n_order, f=Y, t0=0, tf=T, samples=n_samples)
+        lambda: magnus.compute(n=n_order, f=Y_samples, t0=0, tf=T, samples=n_samples)
     )
 
     expm_time, exp_res = median_runtime(lambda: expm(omega))
