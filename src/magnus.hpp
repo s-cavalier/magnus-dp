@@ -3,6 +3,7 @@
 #include "matrix.hpp"
 #include "integrate.hpp"
 #include "gausslegendre.hpp"
+#include "util.hpp"
 
 namespace Magnus {
 
@@ -41,11 +42,10 @@ namespace Magnus {
         GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
 
         // DP buffer space
-        typename Int::allocator_t usable_alloc = alloc;
-        NumT* Y_data = usable_alloc.allocate(total_data_size);
-        NumT* total_data = usable_alloc.allocate(matrix_size);
-        MatrixSpanT Y( Y_data, mat_dim, sample_len );
-        MatrixViewT total_copy( total_data, mat_dim );
+        auto Y_data = allocate_unique<NumT>(total_data_size, alloc);
+        auto total_data = allocate_unique<NumT>(matrix_size, alloc);
+        MatrixSpanT Y( Y_data.get(), mat_dim, sample_len );
+        MatrixViewT total_copy( total_data.get(), mat_dim );
 
         MatrixViewT temp = integrator.borrow_scratch();
 
@@ -66,8 +66,6 @@ namespace Magnus {
             integrator.sum(Y, out, final_scale);
         }
 
-        usable_alloc.deallocate(total_data, matrix_size);
-        usable_alloc.deallocate(Y_data, total_data_size);
     }
 
     template <Integrator Int>
@@ -104,11 +102,10 @@ namespace Magnus {
         GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
 
         // DP buffer space
-        typename Int::allocator_t usable_alloc = alloc;
-        NumT* Y_data = usable_alloc.allocate(total_data_size);
-        NumT* total_data = usable_alloc.allocate(matrix_size);
-        MatrixSpanT Y( Y_data, mat_dim, sample_len );
-        MatrixViewT total_copy( total_data, mat_dim );
+        auto Y_data = allocate_unique<NumT>(total_data_size, alloc);
+        auto total_data = allocate_unique<NumT>(matrix_size, alloc);
+        MatrixSpanT Y( Y_data.get(), mat_dim, sample_len );
+        MatrixViewT total_copy( total_data.get(), mat_dim );
 
         MatrixViewT temp = integrator.borrow_scratch();
 
@@ -130,10 +127,6 @@ namespace Magnus {
                 integrator.sum(Y, term, final_scale);
             }   
         }
-
-        usable_alloc.deallocate(total_data, matrix_size);
-        usable_alloc.deallocate(Y_data, total_data_size);
-
     }
 
     template <Integrator Int>
@@ -169,11 +162,10 @@ namespace Magnus {
         GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
 
         // DP buffer space
-        typename Int::allocator_t usable_alloc = alloc;
-        NumT* Y_data = usable_alloc.allocate(total_data_size);
-        NumT* total_data = usable_alloc.allocate(matrix_size);
-        MatrixSpanT Y( Y_data, mat_dim, sample_len );
-        MatrixViewT total_copy( total_data, mat_dim );
+        auto Y_data = allocate_unique<NumT>(total_data_size, alloc);
+        auto total_data = allocate_unique<NumT>(matrix_size, alloc);
+        MatrixSpanT Y( Y_data.get(), mat_dim, sample_len );
+        MatrixViewT total_copy( total_data.get(), mat_dim );
 
         MatrixViewT temp = integrator.borrow_scratch();
 
@@ -194,9 +186,6 @@ namespace Magnus {
                 integrator.sum(Y, out, final_scale);
             }   
         }
-
-        usable_alloc.deallocate(total_data, matrix_size);
-        usable_alloc.deallocate(Y_data, total_data_size);
     }
 
 }
