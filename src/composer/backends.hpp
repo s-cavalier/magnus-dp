@@ -1,8 +1,8 @@
 #ifndef __BACKEND_COMPOSER_HPP__
 #define __BACKEND_COMPOSER_HPP__
 #include "dispatch.hpp"
-#include "integration/integratebackends.hpp"
-#include "linalg/matrixbackends.hpp"
+#include "integration/backends.hpp"
+#include "linalg/backends.hpp"
 
 #include <algorithm>
 #include <array>

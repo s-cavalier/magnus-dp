@@ -2,9 +2,7 @@
 
 #include <iomanip>
 #include <fstream>
-#include <sstream>
 #include <stdexcept>
-#include <string>
 #include <string_view>
 
 namespace {
@@ -16,7 +14,7 @@ void emit_literal_alias(std::ostream& out, std::string_view name, bool include_a
     bool first = true;
     for (std::string_view backend_name : BackendList::dispatch_names) {
         if (!first) out << ", ";
-        out << std::quoted(std::string(backend_name));
+        out << std::quoted(backend_name);
         first = false;
     }
 
@@ -35,7 +33,7 @@ void emit_literal_alias_from_names(std::ostream& out, std::string_view name, con
     bool first = true;
     for (std::string_view backend_name : names) {
         if (!first) out << ", ";
-        out << std::quoted(std::string(backend_name));
+        out << std::quoted(backend_name);
         first = false;
     }
 

@@ -38,6 +38,21 @@ add_library(magnus_core STATIC
     ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.cpp
 )
 
+target_sources(magnus_core PRIVATE
+    src/linalg/backends.hpp
+    src/linalg/blas.hpp
+    src/linalg/fixed.hpp
+    src/linalg/manual.hpp
+    src/linalg/matrix.hpp
+    src/linalg/spacecurve.hpp
+    src/integration/backends.hpp
+    src/integration/boole.hpp
+    src/integration/default.hpp
+    src/integration/integrate.hpp
+    src/integration/simpson.hpp
+    src/integration/trapezoid.hpp
+)
+
 set_source_files_properties(
     ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.cpp
     PROPERTIES
