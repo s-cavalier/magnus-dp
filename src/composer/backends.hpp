@@ -18,7 +18,7 @@ namespace Magnus {
 
     void initialize_default_gl_table();
 
-    std::unique_ptr<KernelPlan> make_plan(Params& p, size_t num_idx, size_t mat_idx, size_t int_idx, Dispatch::KernelOp op);
+    std::unique_ptr<KernelPlan> make_plan(Params& p, size_t num_idx, size_t mat_idx, size_t int_idx, bool vjp_record, Dispatch::KernelOp op);
 
     namespace detail {
 
@@ -173,20 +173,22 @@ namespace Magnus {
             size_t n,
             NumT* in,
             NumT* out,
+            NumT* vjp_data,
             size_t samples,
             size_t dim,
             double t0,
             double tf,
             Dispatch::KernelOp op,
             size_t mat_idx,
-            size_t int_idx
+            size_t int_idx,
+            bool record_vjp
         ) {
             validate_raw_buffers(in, out);
             matrix_input_shape(n, std::array<size_t, 3>{samples, dim, dim});
             initialize_default_gl_table();
 
             Params params{
-                Params::num_data<NumT>{in, out},
+                Params::num_data<NumT>{in, out, vjp_data},
                 n,
                 dim,
                 samples,
@@ -196,7 +198,7 @@ namespace Magnus {
 
             size_t num_idx = NumBackends::resolve(type_name_v<NumT>);
 
-            std::unique_ptr<KernelPlan> plan = make_plan(params, num_idx, mat_idx, int_idx, op);
+            std::unique_ptr<KernelPlan> plan = make_plan(params, num_idx, mat_idx, int_idx, record_vjp, op);
             plan->run();
         }
 
@@ -207,13 +209,15 @@ namespace Magnus {
         size_t n,
         const NumT* in,
         NumT* out,
+        NumT* vjp_data,
         size_t samples,
         size_t dim,
         double t0,
         double tf,
         Dispatch::KernelOp op,
         size_t mat_idx,
-        size_t int_idx
+        size_t int_idx,
+        bool record_vjp = false
     ) {
         detail::validate_raw_buffers(in, out);
         detail::matrix_input_shape(n, std::array<size_t, 3>{samples, dim, dim});
@@ -226,13 +230,15 @@ namespace Magnus {
             n,
             input_copy.data(),
             out,
+            vjp_data,
             samples,
             dim,
             t0,
             tf,
             op,
             mat_idx,
-            int_idx
+            int_idx,
+            record_vjp
         );
     }
 
@@ -247,19 +253,53 @@ namespace Magnus {
         double tf,
         std::string_view op,
         std::string_view matrix_backend,
-        std::string_view integrator
+        std::string_view integrator,
+        bool record_vjp = false
     ) {
         run_raw(
             n,
             in,
             out,
+            static_cast<NumT*>(nullptr),
             samples,
             dim,
             t0,
             tf,
             Dispatch::op_from_str(op),
             MatrixBackends::resolve(matrix_backend),
-            IntegratorBackends::resolve(integrator)
+            IntegratorBackends::resolve(integrator),
+            record_vjp
+        );
+    }
+
+    template <Numeric NumT>
+    void run_raw(
+        size_t n,
+        const NumT* in,
+        NumT* out,
+        NumT* vjp_data,
+        size_t samples,
+        size_t dim,
+        double t0,
+        double tf,
+        std::string_view op,
+        std::string_view matrix_backend,
+        std::string_view integrator,
+        bool record_vjp = false
+    ) {
+        run_raw(
+            n,
+            in,
+            out,
+            vjp_data,
+            samples,
+            dim,
+            t0,
+            tf,
+            Dispatch::op_from_str(op),
+            MatrixBackends::resolve(matrix_backend),
+            IntegratorBackends::resolve(integrator),
+            record_vjp
         );
     }
 
@@ -268,11 +308,13 @@ namespace Magnus {
         size_t n,
         const NumT* in,
         NumT* out,
+        NumT* vjp_data,
         size_t samples,
         double t0,
         double tf,
         Dispatch::KernelOp op,
-        size_t int_idx
+        size_t int_idx,
+        bool record_vjp = false
     ) {
         detail::validate_raw_buffers(in, out);
         detail::spacecurve_input_shape(n, std::array<size_t, 2>{samples, 3});
@@ -293,13 +335,15 @@ namespace Magnus {
             n,
             padded.data(),
             padded_out.data(),
+            vjp_data,
             samples,
             2,
             t0,
             tf,
             op,
             MatrixBackends::resolve("SpaceCurve"),
-            int_idx
+            int_idx,
+            record_vjp
         );
 
         for (size_t i = 0; i < result_count; ++i) {
@@ -318,17 +362,47 @@ namespace Magnus {
         double t0,
         double tf,
         std::string_view op,
-        std::string_view integrator
+        std::string_view integrator,
+        bool record_vjp = false
     ) {
         run_spacecurve_raw(
             n,
             in,
             out,
+            static_cast<NumT*>(nullptr),
             samples,
             t0,
             tf,
             Dispatch::op_from_str(op),
-            IntegratorBackends::resolve(integrator)
+            IntegratorBackends::resolve(integrator),
+            record_vjp
+        );
+    }
+
+    template <Numeric NumT>
+    void run_spacecurve_raw(
+        size_t n,
+        const NumT* in,
+        NumT* out,
+        NumT* vjp_data,
+        size_t samples,
+        double t0,
+        double tf,
+        std::string_view op,
+        std::string_view integrator,
+        bool record_vjp = false
+    ) {
+        run_spacecurve_raw(
+            n,
+            in,
+            out,
+            vjp_data,
+            samples,
+            t0,
+            tf,
+            Dispatch::op_from_str(op),
+            IntegratorBackends::resolve(integrator),
+            record_vjp
         );
     }
 

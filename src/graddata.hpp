@@ -1,6 +1,7 @@
 #ifndef __GRAD_DATA_HPP__
 #define __GRAD_DATA_HPP__
 #include "linalg/matrix.hpp"
+#include "integration/integrate.hpp"
 #include "util/extra.hpp"
 
 namespace Magnus::VJP {
@@ -103,6 +104,13 @@ namespace Magnus::VJP {
         }
 
     };
+
+    template <bool RecordData, Integrator Int>
+    using recorder_t = std::conditional_t<
+        RecordData,
+        Data<typename Int::numeric_t>,
+        NoData
+    >;
 
 }
 

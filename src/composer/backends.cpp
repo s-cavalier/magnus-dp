@@ -20,7 +20,7 @@ void Magnus::initialize_default_gl_table() {
     });
 }
 
-std::unique_ptr<Magnus::KernelPlan> Magnus::make_plan(Params& p, size_t num_idx, size_t mat_idx, size_t int_idx, Dispatch::KernelOp op) {
+std::unique_ptr<Magnus::KernelPlan> Magnus::make_plan(Params& p, size_t num_idx, size_t mat_idx, size_t int_idx, bool vjp_record, Dispatch::KernelOp op) {
     initialize_default_gl_table();
 
     if ( p.n > 1 ) {
@@ -42,9 +42,14 @@ std::unique_ptr<Magnus::KernelPlan> Magnus::make_plan(Params& p, size_t num_idx,
                 static_assert( Integrator<Int> );
 
                 if ( (p.samples - 1) % Int::divisibility_requirement() != 0 ) throw std::invalid_argument("sample interval count violates integrator divisibility (a power of 2 is recommneded; i.e., total samples is 2^k + 1 for some k > 4)");
-                if ( kernel_idx >= kernels<Int>.size() ) throw std::invalid_argument("invalid kernel operation");
 
-                return std::make_unique< TypedKernelPlan<Int> >( std::move(p), kernels<Int>[kernel_idx] );
+                if ( vjp_record ) {
+                    if ( kernel_idx >= kernels<Int, true>.size() ) throw std::invalid_argument("invalid kernel operation");
+                    return std::make_unique< TypedKernelPlan<Int> >( std::move(p), kernels<Int, true>[kernel_idx] );
+                }
+
+                if ( kernel_idx >= kernels<Int, false>.size() ) throw std::invalid_argument("invalid kernel operation");
+                return std::make_unique< TypedKernelPlan<Int> >( std::move(p), kernels<Int, false>[kernel_idx] );
             } );
 
         });

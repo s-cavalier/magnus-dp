@@ -3,6 +3,7 @@
 #include "graddata.hpp"
 #include "magnus.hpp"
 #include "util/memorybuffer.hpp"
+#include <string_view>
 #include <variant>
 
 namespace Magnus {
@@ -24,6 +25,9 @@ namespace Magnus {
         struct num_data {
             NumT* in;
             NumT* out;
+            NumT* vjp_data;
+
+            num_data( NumT* in, NumT* out, NumT* vjp_data = nullptr ) : in(in), out(out), vjp_data(vjp_data) {}
         };
 
         std::variant<num_data<f32>, num_data<f64>, num_data<c32>, num_data<c64>> data;
@@ -210,6 +214,26 @@ namespace Magnus {
         NumBackend<c64>
     >;
 
+    // similarly, for VJP data recorders
+
+    template <bool RecordVJPData, Integrator Int>
+    VJP::recorder_t<RecordVJPData, Int> make_vjp_recorder(Params& p) {
+        using NumT = typename Int::numeric_t;
+
+        if constexpr (RecordVJPData) {
+            auto& buffers = std::get<Params::num_data<NumT>>(p.data);
+
+            return VJP::Data<NumT>(
+                buffers.vjp_data,
+                p.n,
+                p.samples,
+                p.dim
+            );
+        } else {
+            return VJP::NoData{};
+        }
+    }
+
     // similarly, for the kernels
 
 namespace Dispatch {
@@ -231,7 +255,7 @@ namespace Dispatch {
         throw std::invalid_argument( "could not deduce kernel op from str in Magnus::Dispatch::op_from_str(std::string_view)" );
     }
 
-    template <Integrator Int>
+    template <Integrator Int, bool RecordVJP>
     void one( Params& p, const typename Int::allocator_t& alloc = typename Int::allocator_t() ) {
         using numeric_t = typename Int::numeric_t;
         using matrix_t = typename Int::matrix_t;
@@ -241,11 +265,11 @@ namespace Dispatch {
         matrix_t out( data.out, p.dim );
         matrix_span_t in( data.in, p.dim, p.samples );
 
-        VJP::NoData nothing;
-        Magnus::one<Int>(out, p.n, in, p.t0, p.tf, nothing, alloc);
+        auto recorder = make_vjp_recorder<RecordVJP, Int>(p);
+        Magnus::one<Int>(out, p.n, in, p.t0, p.tf, recorder, alloc);
     }
 
-    template <Integrator Int>
+    template <Integrator Int, bool RecordVJP>
     void many( Params& p, const typename Int::allocator_t& alloc = typename Int::allocator_t() ) {
         using numeric_t = typename Int::numeric_t;
         using matrix_t = typename Int::matrix_t;
@@ -255,11 +279,11 @@ namespace Dispatch {
         matrix_span_t out( data.out, p.dim, p.n );
         matrix_span_t in( data.in, p.dim, p.samples );
 
-        VJP::NoData nothing;
-        Magnus::many<Int>(out, in, p.t0, p.tf, nothing, alloc);
+        auto recorder = make_vjp_recorder<RecordVJP, Int>(p);
+        Magnus::many<Int>(out, in, p.t0, p.tf, recorder, alloc);
     }
 
-    template <Integrator Int>
+    template <Integrator Int, bool RecordVJP>
     void sum( Params& p, const typename Int::allocator_t& alloc = typename Int::allocator_t()  ) {
         using numeric_t = typename Int::numeric_t;
         using matrix_t = typename Int::matrix_t;
@@ -269,18 +293,18 @@ namespace Dispatch {
         matrix_t out( data.out, p.dim );
         matrix_span_t in( data.in, p.dim, p.samples );
 
-        VJP::NoData nothing;
-        Magnus::sum<Int>(out, p.n, in, p.t0, p.tf, nothing, alloc);
+        auto recorder = make_vjp_recorder<RecordVJP, Int>(p);
+        Magnus::sum<Int>(out, p.n, in, p.t0, p.tf, recorder, alloc);
     }
 }
     template <class Allocator>
     using kernel_dispatch_t = void(*)(Params&, const Allocator&);
 
-    template <Integrator Int>
+    template <Integrator Int, bool RecordVJP>
     inline constexpr std::array< kernel_dispatch_t<typename Int::allocator_t>, 3> kernels{ 
-        &Dispatch::one<Int>, 
-        &Dispatch::many<Int>, 
-        &Dispatch::sum<Int> 
+        &Dispatch::one<Int, RecordVJP>, 
+        &Dispatch::many<Int, RecordVJP>, 
+        &Dispatch::sum<Int, RecordVJP> 
     };
 
     struct KernelPlan {

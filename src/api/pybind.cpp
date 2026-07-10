@@ -128,15 +128,29 @@ std::vector<py::ssize_t> py_shape(const std::vector<size_t>& shape) {
     return out;
 }
 
+py::array vjp_array(py::dtype dtype, size_t n, size_t samples, size_t dim) {
+    return py::array(
+        dtype,
+        py_shape({
+            gl_max_n(n),
+            total_orders(n),
+            samples,
+            dim,
+            dim,
+        })
+    );
+}
+
 template <Numeric NumT>
-py::array run_typed(
+py::object run_typed(
     size_t n,
     py::array data,
     double t0,
     double tf,
     std::string_view op,
     std::string_view matrix_backend,
-    std::string_view integrator
+    std::string_view integrator,
+    bool record_vjp
 ) {
     CArrayCoercible<NumT> typed = CArrayCoercible<NumT>::ensure(data);
     if (!typed) throw py::type_error("could not convert data to the selected numeric dtype");
@@ -148,6 +162,8 @@ py::array run_typed(
     py::buffer_info out_info = out.request();
     const NumT* in = static_cast<const NumT*>(in_info.ptr);
     NumT* out_data = static_cast<NumT*>(out_info.ptr);
+    py::array vjp = record_vjp ? vjp_array(data.dtype(), n, input_shape.samples, input_shape.dim) : py::array();
+    NumT* vjp_data = record_vjp ? static_cast<NumT*>(vjp.request().ptr) : nullptr;
 
     {
         py::gil_scoped_release release;
@@ -155,27 +171,32 @@ py::array run_typed(
             n,
             in,
             out_data,
+            vjp_data,
             input_shape.samples,
             input_shape.dim,
             t0,
             tf,
             op,
             matrix_backend,
-            integrator
+            integrator,
+            record_vjp
         );
     }
+
+    if (record_vjp) return py::make_tuple(out, vjp);
 
     return out;
 }
 
 template <Numeric NumT>
-py::array run_spacecurve_typed(
+py::object run_spacecurve_typed(
     size_t n,
     py::array data,
     double t0,
     double tf,
     std::string_view op,
-    std::string_view integrator
+    std::string_view integrator,
+    bool record_vjp
 ) {
     CArrayCoercible<NumT> typed = CArrayCoercible<NumT>::ensure(data);
     if (!typed) throw py::type_error("could not convert data to the selected numeric dtype");
@@ -187,6 +208,8 @@ py::array run_spacecurve_typed(
     CArray<NumT> out(py_shape(spacecurve_output_shape(op, n)));
     py::buffer_info out_info = out.request();
     NumT* out_data = static_cast<NumT*>(out_info.ptr);
+    py::array vjp = record_vjp ? vjp_array(data.dtype(), n, input_shape.samples, 2) : py::array();
+    NumT* vjp_data = record_vjp ? static_cast<NumT*>(vjp.request().ptr) : nullptr;
 
     {
         py::gil_scoped_release release;
@@ -194,49 +217,55 @@ py::array run_spacecurve_typed(
             n,
             in,
             out_data,
+            vjp_data,
             input_shape.samples,
             t0,
             tf,
             op,
-            integrator
+            integrator,
+            record_vjp
         );
     }
+
+    if (record_vjp) return py::make_tuple(out, vjp);
 
     return out;
 }
 
-py::array compute(
+py::object compute(
     size_t n,
     py::array data,
     double t0,
     double tf,
     std::string_view op,
     std::string_view matrix_backend,
-    std::string_view integrator
+    std::string_view integrator,
+    bool record_vjp
 ) {
     py::dtype dtype = data.dtype();
 
-    if (dtype.is(py::dtype::of<f32>())) return run_typed<f32>(n, data, t0, tf, op, matrix_backend, integrator);
-    if (dtype.is(py::dtype::of<f64>())) return run_typed<f64>(n, data, t0, tf, op, matrix_backend, integrator);
-    if (dtype.is(py::dtype::of<c32>())) return run_typed<c32>(n, data, t0, tf, op, matrix_backend, integrator);
-    if (dtype.is(py::dtype::of<c64>())) return run_typed<c64>(n, data, t0, tf, op, matrix_backend, integrator);
+    if (dtype.is(py::dtype::of<f32>())) return run_typed<f32>(n, data, t0, tf, op, matrix_backend, integrator, record_vjp);
+    if (dtype.is(py::dtype::of<f64>())) return run_typed<f64>(n, data, t0, tf, op, matrix_backend, integrator, record_vjp);
+    if (dtype.is(py::dtype::of<c32>())) return run_typed<c32>(n, data, t0, tf, op, matrix_backend, integrator, record_vjp);
+    if (dtype.is(py::dtype::of<c64>())) return run_typed<c64>(n, data, t0, tf, op, matrix_backend, integrator, record_vjp);
     throw py::type_error("magnus only supports dtypes float32, float64, complex64, and complex128");
 }
 
-py::array compute_sc(
+py::object compute_sc(
     size_t n,
     py::array data,
     double t0,
     double tf,
     std::string_view op,
-    std::string_view integrator
+    std::string_view integrator,
+    bool record_vjp
 ) {
     py::dtype dtype = data.dtype();
 
-    if (dtype.is(py::dtype::of<f32>())) return run_spacecurve_typed<f32>(n, data, t0, tf, op, integrator);
-    if (dtype.is(py::dtype::of<f64>())) return run_spacecurve_typed<f64>(n, data, t0, tf, op, integrator);
-    if (dtype.is(py::dtype::of<c32>())) return run_spacecurve_typed<c32>(n, data, t0, tf, op, integrator);
-    if (dtype.is(py::dtype::of<c64>())) return run_spacecurve_typed<c64>(n, data, t0, tf, op, integrator);
+    if (dtype.is(py::dtype::of<f32>())) return run_spacecurve_typed<f32>(n, data, t0, tf, op, integrator, record_vjp);
+    if (dtype.is(py::dtype::of<f64>())) return run_spacecurve_typed<f64>(n, data, t0, tf, op, integrator, record_vjp);
+    if (dtype.is(py::dtype::of<c32>())) return run_spacecurve_typed<c32>(n, data, t0, tf, op, integrator, record_vjp);
+    if (dtype.is(py::dtype::of<c64>())) return run_spacecurve_typed<c64>(n, data, t0, tf, op, integrator, record_vjp);
     throw py::type_error("magnus only supports dtypes float32, float64, complex64, and complex128");
 }
 
@@ -296,6 +325,7 @@ PYBIND11_MODULE(_core, m) {
         py::arg("op") = "sum",
         py::arg("matrix_backend") = "Auto",
         py::arg("integrator") = "Auto",
+        py::arg("record_vjp") = false,
         "Compute a Magnus operation from sampled matrix data."
     );
 
@@ -308,6 +338,7 @@ PYBIND11_MODULE(_core, m) {
         py::arg("tf"),
         py::arg("op") = "sum",
         py::arg("integrator") = "Auto",
+        py::arg("record_vjp") = false,
         "Compute a SpaceCurve Magnus operation from sampled 3-vector data."
     );
 

@@ -53,10 +53,24 @@ def _matrix_output_type(op: KernelOpName, n: int, data: Any):
     return jax.ShapeDtypeStruct((dim, dim), data.dtype)
 
 
+def _matrix_vjp_output_type(n: int, data: Any):
+    shape = tuple(data.shape)
+    if len(shape) < 3: raise ValueError("cannot infer VJP output shape from data")
+
+    return jax.ShapeDtypeStruct(((operator.index(n) + 3) // 2, operator.index(n) - 1, shape[0], shape[1], shape[2]), data.dtype)
+
+
 def _spacecurve_output_type(op: KernelOpName, n: int, data: Any):
     if op == "many": return jax.ShapeDtypeStruct((operator.index(n), 3), data.dtype)
 
     return jax.ShapeDtypeStruct((3,), data.dtype)
+
+
+def _spacecurve_vjp_output_type(n: int, data: Any):
+    shape = tuple(data.shape)
+    if len(shape) < 2: raise ValueError("cannot infer VJP output shape from data")
+
+    return jax.ShapeDtypeStruct(((operator.index(n) + 3) // 2, operator.index(n) - 1, shape[0], 2, 2), data.dtype)
 
 
 def _matrix_call(
@@ -67,9 +81,28 @@ def _matrix_call(
     tf: float,
     matrix_backend: MatrixBackendName,
     integrator: IntegratorName,
+    record_vjp: bool,
 ):
     register_ffi_targets()
     data = jnp.asarray(data)
+    if record_vjp:
+        call = jax.ffi.ffi_call(
+            "magnus_matrix_vjp",
+            (
+                _matrix_output_type(op, n, data),
+                _matrix_vjp_output_type(n, data),
+            ),
+        )
+        return call(
+            data,
+            n=np.uint64(operator.index(n)),
+            op=op,
+            t0=float(t0),
+            tf=float(tf),
+            matrix_backend=matrix_backend,
+            integrator=integrator,
+        )
+
     call = jax.ffi.ffi_call("magnus_matrix", _matrix_output_type(op, n, data))
     return call(
         data,
@@ -79,6 +112,7 @@ def _matrix_call(
         tf=float(tf),
         matrix_backend=matrix_backend,
         integrator=integrator,
+        record_vjp=record_vjp,
     )
 
 
@@ -89,9 +123,27 @@ def _spacecurve_call(
     t0: float,
     tf: float,
     integrator: IntegratorName,
+    record_vjp: bool,
 ):
     register_ffi_targets()
     data = jnp.asarray(data)
+    if record_vjp:
+        call = jax.ffi.ffi_call(
+            "magnus_spacecurve_vjp",
+            (
+                _spacecurve_output_type(op, n, data),
+                _spacecurve_vjp_output_type(n, data),
+            ),
+        )
+        return call(
+            data,
+            n=np.uint64(operator.index(n)),
+            op=op,
+            t0=float(t0),
+            tf=float(tf),
+            integrator=integrator,
+        )
+
     call = jax.ffi.ffi_call("magnus_spacecurve", _spacecurve_output_type(op, n, data))
     return call(
         data,
@@ -100,6 +152,7 @@ def _spacecurve_call(
         t0=float(t0),
         tf=float(tf),
         integrator=integrator,
+        record_vjp=record_vjp,
     )
 
 
@@ -111,9 +164,10 @@ def _matrix_fwd(
     tf: float,
     matrix_backend: MatrixBackendName,
     integrator: IntegratorName,
+    record_vjp: bool,
 ):
     data = jnp.asarray(data)
-    out = _matrix_call(op, n, data, t0, tf, matrix_backend, integrator)
+    out = _matrix_call(op, n, data, t0, tf, matrix_backend, integrator, record_vjp)
     return out, (data,)
 
 
@@ -124,13 +178,14 @@ def _spacecurve_fwd(
     t0: float,
     tf: float,
     integrator: IntegratorName,
+    record_vjp: bool,
 ):
     data = jnp.asarray(data)
-    out = _spacecurve_call(op, n, data, t0, tf, integrator)
+    out = _spacecurve_call(op, n, data, t0, tf, integrator, record_vjp)
     return out, (data,)
 
 
-@partial(jax.custom_vjp, nondiff_argnums=(1, 2, 3, 4, 5, 6))
+@partial(jax.custom_vjp, nondiff_argnums=(1, 2, 3, 4, 5, 6, 7))
 def _matrix_call_vjp(
     data: Any,
     op: KernelOpName,
@@ -139,8 +194,9 @@ def _matrix_call_vjp(
     tf: float,
     matrix_backend: MatrixBackendName,
     integrator: IntegratorName,
+    record_vjp: bool,
 ):
-    return _matrix_call(op, n, data, t0, tf, matrix_backend, integrator)
+    return _matrix_call(op, n, data, t0, tf, matrix_backend, integrator, record_vjp)
 
 
 def _matrix_bwd(
@@ -150,10 +206,11 @@ def _matrix_bwd(
     tf: float,
     matrix_backend: MatrixBackendName,
     integrator: IntegratorName,
+    record_vjp: bool,
     residuals: tuple[Any, ...],
     cotangent: Any,
 ):
-    del op, n, t0, tf, matrix_backend, integrator, residuals, cotangent
+    del op, n, t0, tf, matrix_backend, integrator, record_vjp, residuals, cotangent
     raise NotImplementedError(
         "magnus.jax reverse-mode gradients need the C++ VJP FFI target, "
         "which has not been implemented yet."
@@ -163,7 +220,7 @@ def _matrix_bwd(
 _matrix_call_vjp.defvjp(_matrix_fwd, _matrix_bwd)
 
 
-@partial(jax.custom_vjp, nondiff_argnums=(1, 2, 3, 4, 5))
+@partial(jax.custom_vjp, nondiff_argnums=(1, 2, 3, 4, 5, 6))
 def _spacecurve_call_vjp(
     data: Any,
     op: KernelOpName,
@@ -171,8 +228,9 @@ def _spacecurve_call_vjp(
     t0: float,
     tf: float,
     integrator: IntegratorName,
+    record_vjp: bool,
 ):
-    return _spacecurve_call(op, n, data, t0, tf, integrator)
+    return _spacecurve_call(op, n, data, t0, tf, integrator, record_vjp)
 
 
 def _spacecurve_bwd(
@@ -181,10 +239,11 @@ def _spacecurve_bwd(
     t0: float,
     tf: float,
     integrator: IntegratorName,
+    record_vjp: bool,
     residuals: tuple[Any, ...],
     cotangent: Any,
 ):
-    del op, n, t0, tf, integrator, residuals, cotangent
+    del op, n, t0, tf, integrator, record_vjp, residuals, cotangent
     raise NotImplementedError(
         "magnus.jax reverse-mode gradients need the C++ VJP FFI target, "
         "which has not been implemented yet."
@@ -233,8 +292,9 @@ def _compute_sampled(
     op: KernelOpName = "sum",
     matrix_backend: MatrixBackendName = "Auto",
     integrator: IntegratorName = "Auto",
+    record_vjp: bool = False,
 ):
-    return _matrix_call_vjp(data, op, n, t0, tf, matrix_backend, integrator)
+    return _matrix_call_vjp(data, op, n, t0, tf, matrix_backend, integrator, record_vjp)
 
 
 def _compute_sc_sampled(
@@ -245,8 +305,9 @@ def _compute_sc_sampled(
     *,
     op: KernelOpName = "sum",
     integrator: IntegratorName = "Auto",
+    record_vjp: bool = False,
 ):
-    return _spacecurve_call_vjp(data, op, n, t0, tf, integrator)
+    return _spacecurve_call_vjp(data, op, n, t0, tf, integrator, record_vjp)
 
 
 def compute(
@@ -261,6 +322,7 @@ def compute(
     vectorized: bool = True,
     matrix_backend: MatrixBackendName = "Auto",
     integrator: IntegratorName = "Auto",
+    record_vjp: bool = False,
 ):
     data = _sample_callable(
         f,
@@ -278,6 +340,7 @@ def compute(
         op=op,
         matrix_backend=matrix_backend,
         integrator=integrator,
+        record_vjp=record_vjp,
     )
 
 
@@ -292,6 +355,7 @@ def compute_sc(
     dtype: Any = None,
     vectorized: bool = True,
     integrator: IntegratorName = "Auto",
+    record_vjp: bool = False,
 ):
     data = _sample_spacecurve_callable(
         f,
@@ -308,6 +372,7 @@ def compute_sc(
         tf,
         op=op,
         integrator=integrator,
+        record_vjp=record_vjp,
     )
 
 

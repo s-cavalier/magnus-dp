@@ -91,7 +91,8 @@ def compute(
     vectorized: bool = True,
     matrix_backend: MatrixBackendName = "Auto",
     integrator: IntegratorName = "Auto",
-) -> np.ndarray:
+    record_vjp: bool = False,
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     data = _sample_callable(
         f,
         t0,
@@ -108,6 +109,7 @@ def compute(
         op=op,
         matrix_backend=matrix_backend,
         integrator=integrator,
+        record_vjp=record_vjp,
     )
 
 
@@ -122,7 +124,8 @@ def compute_sc(
     dtype=None,
     vectorized: bool = True,
     integrator: IntegratorName = "Auto",
-) -> np.ndarray:
+    record_vjp: bool = False,
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     data = _sample_spacecurve_callable(
         f,
         t0,
@@ -138,4 +141,5 @@ def compute_sc(
         tf,
         op=op,
         integrator=integrator,
+        record_vjp=record_vjp,
     )

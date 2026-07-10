@@ -187,6 +187,36 @@ def test_spacecurve_vectorized_and_pointwise_sampling_match():
     np.testing.assert_allclose(point, vectorized, rtol=1e-11, atol=1e-12)
 
 
+def test_compute_can_return_vjp_data():
+    output, vjp_data = magnus.compute(
+        4,
+        matrix_values,
+        0.0,
+        1.0,
+        9,
+        op="sum",
+        record_vjp=True,
+    )
+
+    assert output.shape == (2, 2)
+    assert vjp_data.shape == (3, 3, 9, 2, 2)
+
+
+def test_compute_sc_can_return_vjp_data():
+    output, vjp_data = magnus.compute_sc(
+        4,
+        spacecurve_values,
+        0.0,
+        1.0,
+        9,
+        op="sum",
+        record_vjp=True,
+    )
+
+    assert output.shape == (3,)
+    assert vjp_data.shape == (3, 3, 9, 2, 2)
+
+
 @pytest.mark.parametrize("dtype", [np.float32, np.float64, np.complex64, np.complex128])
 def test_compute_dtype_controls_sample_dtype(dtype):
     def f(t):
