@@ -1,7 +1,7 @@
 #ifndef __DISPATCH_HPP__
 #define __DISPATCH_HPP__
 #include "magnus.hpp"
-#include "memorybuffer.hpp"
+#include "util/memorybuffer.hpp"
 #include <variant>
 
 namespace Magnus {

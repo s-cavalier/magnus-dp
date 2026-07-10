@@ -1,7 +1,7 @@
 #ifndef __GRAD_DATA_HPP__
 #define __GRAD_DATA_HPP__
-#include "matrix.hpp"
-#include "util.hpp"
+#include "linalg/matrix.hpp"
+#include "util/extra.hpp"
 
 namespace Magnus::VJP {
 

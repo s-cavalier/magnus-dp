@@ -1,8 +1,8 @@
 #ifndef __INTEGRATE_BACKENDS_HPP__
 #define __INTEGRATE_BACKENDS_HPP__
 #include "integrate.hpp"
-#include "dispatch.hpp"
-#include "memorybuffer.hpp"
+#include "composer/dispatch.hpp"
+#include "util/memorybuffer.hpp"
 
 namespace Magnus {
     template <class NumT, MatrixPolicy MatPolicyT, class AllocatorT = std::allocator<NumT>>

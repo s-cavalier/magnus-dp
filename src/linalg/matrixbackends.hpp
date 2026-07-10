@@ -1,6 +1,6 @@
 #ifndef __MAT_BACKENDS_HPP__
 #define __MAT_BACKENDS_HPP__
-#include "dispatch.hpp"
+#include "composer/dispatch.hpp"
 #include <mkl.h>
 #include <execution>
 #include <algorithm>

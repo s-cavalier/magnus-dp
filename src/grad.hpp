@@ -2,8 +2,8 @@
 #define __GRAD_HPP__
 #include "graddata.hpp"
 #include "magnus.hpp"
-#include "integrate.hpp"
-#include "util.hpp"
+#include "integration/integrate.hpp"
+#include "util/extra.hpp"
 #include <optional>
 
 namespace Magnus::VJP {

@@ -1,10 +1,10 @@
 #ifndef __MAGNUS_HPP__
 #define __MAGNUS_HPP__
-#include "matrix.hpp"
-#include "integrate.hpp"
-#include "gausslegendre.hpp"
+#include "linalg/matrix.hpp"
+#include "integration/integrate.hpp"
+#include "util/gausslegendre.hpp"
+#include "util/extra.hpp"
 #include "graddata.hpp"
-#include "util.hpp"
 
 namespace Magnus {
 

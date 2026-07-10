@@ -1,5 +1,5 @@
-#include "backendcomposer.hpp"
-#include "gausslegendre.hpp"
+#include "composer/backends.hpp"
+#include "util/gausslegendre.hpp"
 
 #include <concepts>
 #include <limits>

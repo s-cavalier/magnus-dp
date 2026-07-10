@@ -1,6 +1,6 @@
 #ifndef __INTEGRATE_HPP__
 #define __INTEGRATE_HPP__
-#include "matrix.hpp"
+#include "linalg/matrix.hpp"
 
 namespace Magnus {
 
