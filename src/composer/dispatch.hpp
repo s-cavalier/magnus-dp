@@ -1,5 +1,6 @@
 #ifndef __DISPATCH_HPP__
 #define __DISPATCH_HPP__
+#include "graddata.hpp"
 #include "magnus.hpp"
 #include "util/memorybuffer.hpp"
 #include <variant>
@@ -240,7 +241,8 @@ namespace Dispatch {
         matrix_t out( data.out, p.dim );
         matrix_span_t in( data.in, p.dim, p.samples );
 
-        Magnus::one<Int>(out, p.n, in, p.t0, p.tf, alloc);
+        VJP::NoData nothing;
+        Magnus::one<Int>(out, p.n, in, p.t0, p.tf, nothing, alloc);
     }
 
     template <Integrator Int>
@@ -253,7 +255,8 @@ namespace Dispatch {
         matrix_span_t out( data.out, p.dim, p.n );
         matrix_span_t in( data.in, p.dim, p.samples );
 
-        Magnus::many<Int>(out, in, p.t0, p.tf, alloc);
+        VJP::NoData nothing;
+        Magnus::many<Int>(out, in, p.t0, p.tf, nothing, alloc);
     }
 
     template <Integrator Int>
@@ -266,7 +269,8 @@ namespace Dispatch {
         matrix_t out( data.out, p.dim );
         matrix_span_t in( data.in, p.dim, p.samples );
 
-        Magnus::sum<Int>(out, p.n, in, p.t0, p.tf, alloc);
+        VJP::NoData nothing;
+        Magnus::sum<Int>(out, p.n, in, p.t0, p.tf, nothing, alloc);
     }
 }
     template <class Allocator>

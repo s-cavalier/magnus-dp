@@ -14,17 +14,17 @@ add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.cpp
 
     COMMAND ${Python3_EXECUTABLE}
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/gen_nodes.py
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/util/gen_nodes.py
         ${MAGNUS_GL_MAX_ORDER}
         ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.cpp
 
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/gen_nodes.py
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/util/gen_nodes.py
     VERBATIM
 )
 
 add_library(magnus_core STATIC
-    src/gausslegendre.cpp
-    src/backendcomposer.cpp
+    src/util/gausslegendre.cpp
+    src/composer/backends.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.cpp
 )
 
@@ -56,7 +56,7 @@ set(PYBIND11_FINDPYTHON ON CACHE BOOL "Use CMake FindPython for pybind11" FORCE)
 add_subdirectory("${MAGNUS_PYBIND11_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/extern/pybind11" EXCLUDE_FROM_ALL)
 
 pybind11_add_module(magnus_python
-    src/python.cpp
+    src/api/pybind.cpp
 )
 
 if(MAGNUS_ENABLE_JAX_FFI)
@@ -86,7 +86,7 @@ if(MAGNUS_ENABLE_JAX_FFI)
         )
     endif()
 
-    target_sources(magnus_python PRIVATE src/jax_ffi.cpp)
+    target_sources(magnus_python PRIVATE src/api/jax_ffi.cpp)
     target_include_directories(magnus_python PRIVATE "${MAGNUS_JAX_INCLUDE_DIR}")
     target_compile_definitions(magnus_python PRIVATE MAGNUS_ENABLE_JAX_FFI=1)
 endif()
@@ -100,8 +100,10 @@ target_compile_options(magnus_python PRIVATE
 set_target_properties(magnus_python PROPERTIES OUTPUT_NAME _core)
 
 add_custom_command(TARGET magnus_python POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/demo/magnus"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/api/magnus"
+        "${CMAKE_CURRENT_SOURCE_DIR}/magnus"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:magnus_python>
-        "${CMAKE_CURRENT_SOURCE_DIR}/demo/magnus/$<TARGET_FILE_NAME:magnus_python>"
+        "${CMAKE_CURRENT_SOURCE_DIR}/magnus/$<TARGET_FILE_NAME:magnus_python>"
 )
