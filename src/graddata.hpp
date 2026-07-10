@@ -16,7 +16,7 @@ namespace Magnus::VJP {
     };
 
     template <class NumT>
-    class OneData {
+    class Data {
         NumT* m_data;
         size_t m_q_count;
         size_t m_depth_count;
@@ -36,10 +36,10 @@ namespace Magnus::VJP {
 
         static constexpr size_t rank() { return 4; }
 
-        OneData(NumT* data, size_t n, size_t samples, size_t dim) :
-            OneData(data, gl_max_n(n), total_orders(n), samples, dim) {}
+        Data(NumT* data, size_t n, size_t samples, size_t dim) :
+            Data(data, gl_max_n(n), total_orders(n), samples, dim) {}
 
-        OneData(
+        Data(
             NumT* data,
             size_t q_count,
             size_t depth_count,

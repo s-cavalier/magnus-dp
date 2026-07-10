@@ -73,11 +73,12 @@ namespace Magnus {
 
     }
 
-    template <Integrator Int>
+    template <Integrator Int, VJP::DataRecorder<typename Int::matrix_span_t> VJPDataT = VJP::NoData>
     void many(
         typename Int::matrix_span_t& out,
         typename Int::matrix_span_t& A,
         double t0, double tf,
+        VJPDataT& vjp_data,
         const typename Int::allocator_t& alloc = typename Int::allocator_t()
     ) {
         using namespace Magnus;
@@ -124,6 +125,8 @@ namespace Magnus {
             for ( size_t k = 2; k <= n; ++k ) {
                 integrator.prefix( Y, dt );
 
+                vjp_data.record_prefix(q, k, Y);
+
                 MatrixViewT total = Y[ sample_len - 1 ];
                 total_copy.copy_from(total);
                 Y.sample_update(A, total_copy, shift, temp);
@@ -134,12 +137,13 @@ namespace Magnus {
         }
     }
 
-    template <Integrator Int>
+    template <Integrator Int, VJP::DataRecorder<typename Int::matrix_span_t> VJPDataT = VJP::NoData>
     void sum(
         typename Int::matrix_t& out,
         size_t n, 
         typename Int::matrix_span_t& A,
         double t0, double tf,
+        VJPDataT& vjp_data,
         const typename Int::allocator_t& alloc = typename Int::allocator_t()
     ) {
         using namespace Magnus;
@@ -183,6 +187,8 @@ namespace Magnus {
             
             for ( size_t k = 2; k <= n; ++k ) {
                 integrator.prefix( Y, dt );
+
+                vjp_data.record_prefix(q, k, Y);
 
                 MatrixViewT total = Y[ sample_len - 1 ];
                 total_copy.copy_from(total);
