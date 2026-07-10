@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import operator
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 import numpy as np
 
@@ -11,6 +13,9 @@ from ._core import matrix_backends
 from ._core import max_order
 from ._core import numeric_backends
 from ._core import ops
+
+if TYPE_CHECKING:
+    from ._generated_typing import IntegratorName, KernelOpName, MatrixBackendName
 
 __all__ = [
     "max_order",
@@ -81,11 +86,11 @@ def compute(
     tf: float,
     samples: int,
     *,
-    op: str = "sum",
+    op: KernelOpName = "sum",
     dtype=None,
     vectorized: bool = True,
-    matrix_backend: str = "Auto",
-    integrator: str = "Auto",
+    matrix_backend: MatrixBackendName = "Auto",
+    integrator: IntegratorName = "Auto",
 ) -> np.ndarray:
     data = _sample_callable(
         f,
@@ -113,10 +118,10 @@ def compute_sc(
     tf: float,
     samples: int,
     *,
-    op: str = "sum",
+    op: KernelOpName = "sum",
     dtype=None,
     vectorized: bool = True,
-    integrator: str = "Auto",
+    integrator: IntegratorName = "Auto",
 ) -> np.ndarray:
     data = _sample_spacecurve_callable(
         f,

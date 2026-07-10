@@ -10,6 +10,16 @@ find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
 
 set(MAGNUS_GL_MAX_ORDER 64 CACHE STRING "Maximum generated Gauss-Legendre order")
 
+set(MAGNUS_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/magnus")
+set(MAGNUS_GENERATED_TYPING_FILE "${CMAKE_CURRENT_BINARY_DIR}/_generated_typing.pyi")
+
+add_custom_target(magnus_package_stage
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/api/magnus"
+        "${MAGNUS_PACKAGE_DIR}"
+    COMMENT "Staging magnus Python package"
+)
+
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gl-nodes.cpp
 
@@ -39,6 +49,27 @@ target_compile_options(magnus_core PUBLIC -O3 -march=native)
 target_include_directories(magnus_core PUBLIC src)
 target_link_libraries(magnus_core PUBLIC BLAS::BLAS TBB::tbb)
 set_target_properties(magnus_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_executable(magnus_typing_gen
+    src/api/typing_gen.cpp
+)
+
+target_include_directories(magnus_typing_gen PRIVATE src)
+target_link_libraries(magnus_typing_gen PRIVATE magnus_core)
+target_compile_features(magnus_typing_gen PRIVATE cxx_std_23)
+target_compile_options(magnus_typing_gen PRIVATE
+    -O3
+    -march=native
+)
+
+add_custom_command(
+    OUTPUT ${MAGNUS_GENERATED_TYPING_FILE}
+    COMMAND $<TARGET_FILE:magnus_typing_gen> ${MAGNUS_GENERATED_TYPING_FILE}
+    DEPENDS magnus_typing_gen magnus_package_stage
+    VERBATIM
+)
+
+add_custom_target(magnus_generated_typing DEPENDS ${MAGNUS_GENERATED_TYPING_FILE})
 
 set(MAGNUS_PYBIND11_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/extern/pybind11"
@@ -98,12 +129,13 @@ target_compile_options(magnus_python PRIVATE
     -march=native
 )
 set_target_properties(magnus_python PROPERTIES OUTPUT_NAME _core)
+add_dependencies(magnus_python magnus_generated_typing)
 
 add_custom_command(TARGET magnus_python POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/api/magnus"
-        "${CMAKE_CURRENT_SOURCE_DIR}/magnus"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${MAGNUS_GENERATED_TYPING_FILE}"
+        "${MAGNUS_PACKAGE_DIR}/_generated_typing.pyi"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:magnus_python>
-        "${CMAKE_CURRENT_SOURCE_DIR}/magnus/$<TARGET_FILE_NAME:magnus_python>"
+        "${MAGNUS_PACKAGE_DIR}/$<TARGET_FILE_NAME:magnus_python>"
 )

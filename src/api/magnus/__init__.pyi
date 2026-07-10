@@ -1,16 +1,18 @@
 import numpy as np
 from typing import Any, Callable
 
+from ._generated_typing import IntegratorName, KernelOpName, MatrixBackendName, NumericBackendName
+
 def max_order() -> int:
     """Specifies the current max Legendre-Gauss degree available."""
 
-def numeric_backends() -> tuple[str, ...]: ...
+def numeric_backends() -> tuple[NumericBackendName, ...]: ...
 
-def matrix_backends() -> tuple[str, ...]: ...
+def matrix_backends() -> tuple[MatrixBackendName, ...]: ...
 
-def integrators() -> tuple[str, ...]: ...
+def integrators() -> tuple[IntegratorName, ...]: ...
 
-def ops() -> tuple[str, ...]: ...
+def ops() -> tuple[KernelOpName, ...]: ...
 
 def replace_gl_table(max_order: int) -> None:
     """
@@ -24,11 +26,11 @@ def compute(
     tf: float,
     samples: int,
     *,
-    op: str = "sum",
+    op: KernelOpName = "sum",
     dtype: Any = None,
     vectorized: bool = True,
-    matrix_backend: str = "Auto",
-    integrator: str = "Auto",
+    matrix_backend: MatrixBackendName = "Auto",
+    integrator: IntegratorName = "Auto",
 ) -> np.ndarray:
     """
     Compute a Magnus operation by sampling an R -> matrix function.
@@ -41,10 +43,10 @@ def compute_sc(
     tf: float,
     samples: int,
     *,
-    op: str = "sum",
+    op: KernelOpName = "sum",
     dtype: Any = None,
     vectorized: bool = True,
-    integrator: str = "Auto",
+    integrator: IntegratorName = "Auto",
 ) -> np.ndarray:
     """
     Compute a SpaceCurve Magnus operation by sampling an R -> R^3 function.

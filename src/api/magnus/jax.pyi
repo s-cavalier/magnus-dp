@@ -1,5 +1,7 @@
 from typing import Any, Callable
 
+from ._generated_typing import IntegratorName, KernelOpName, MatrixBackendName
+
 def register_ffi_targets() -> None: ...
 
 def compute(
@@ -9,11 +11,11 @@ def compute(
     tf: float,
     samples: int,
     *,
-    op: str = "sum",
+    op: KernelOpName = "sum",
     dtype: Any = None,
     vectorized: bool = True,
-    matrix_backend: str = "Auto",
-    integrator: str = "Auto",
+    matrix_backend: MatrixBackendName = "Auto",
+    integrator: IntegratorName = "Auto",
 ) -> Any: ...
 
 def compute_sc(
@@ -23,8 +25,8 @@ def compute_sc(
     tf: float,
     samples: int,
     *,
-    op: str = "sum",
+    op: KernelOpName = "sum",
     dtype: Any = None,
     vectorized: bool = True,
-    integrator: str = "Auto",
+    integrator: IntegratorName = "Auto",
 ) -> Any: ...
