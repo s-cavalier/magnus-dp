@@ -29,6 +29,25 @@ namespace Magnus {
             for (size_t i = 0; i < A.length(); ++i) out.add( A[i], dt );
         }
 
+        void prefix_vjp(matrix_span_t& A, double dt) {
+            for (size_t i = A.length() - 1; i > 0; --i) {
+                A[i - 1].add(A[i]);
+                A[i].scale(dt);
+            }
+            A[0].scale(dt);
+        }
+
+        void sum_vjp(matrix_span_t& A, const matrix_t& out, double dt) {
+            for (size_t i = 0; i < A.length(); ++i) {
+                A[i].copy_from(out);
+                A[i].scale(dt);
+            }
+        }
+
+        void sum_vjp_add(matrix_span_t& A, const matrix_t& out, double dt) {
+            for (size_t i = 0; i < A.length(); ++i) A[i].add(out, dt);
+        }
+
         matrix_t borrow_scratch() {
             return tmp.asView();
         }

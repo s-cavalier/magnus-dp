@@ -27,16 +27,24 @@ namespace Magnus {
         typename T::numeric_t;
 
         { T::matmul( size_t{}, cm, cm, m ) } -> std::same_as<void>;
+        { T::matmul_vjp( size_t{}, m, cm, cm, cm, m ) } -> std::same_as<void>;
         { T::matadd( size_t{}, m, cm, double{} ) } -> std::same_as<void>;
         { T::matscale( size_t{}, m, double{} ) } -> std::same_as<void>;
         { T::matcopy( size_t{}, cm, m ) } -> std::same_as<void>;
         { T::matwcopy( size_t{}, cm, m ) } -> std::same_as<void>;
         { T::matzero( size_t{}, m ) } -> std::same_as<void>;
+        { T::matwzero( size_t{}, m ) } -> std::same_as<void>;
+        { T::matwadd( size_t{}, m, cm ) } -> std::same_as<void>;
         { T::sample_update( size_t{}, size_t{}, cm, m, cm, double{}, m ) } -> std::same_as<void>;
+        { T::sample_update_vjp( size_t{}, size_t{}, m, cm, m, cm, double{}, m ) } -> std::same_as<void>;
     };
 
     template <class NumT>
     using MatMulKernelT = void(&)(size_t, const NumT* MAGNUS_RESTRICT, const NumT* MAGNUS_RESTRICT, NumT* MAGNUS_RESTRICT);
+
+    // Accumulates dA and overwrites dB. B and dB may alias.
+    template <class NumT>
+    using MatMulVJPKernelT = void(&)(size_t, NumT* MAGNUS_RESTRICT, const NumT* MAGNUS_RESTRICT, const NumT* MAGNUS_RESTRICT, const NumT* MAGNUS_RESTRICT, NumT* MAGNUS_RESTRICT);
 
     template <class NumT>
     using MatAddKernelT = void(&)(size_t, NumT* MAGNUS_RESTRICT, const NumT* MAGNUS_RESTRICT, double);
@@ -51,7 +59,16 @@ namespace Magnus {
     using MatZeroKernelT = void(&)(size_t, NumT* MAGNUS_RESTRICT);
 
     template <class NumT>
+    using MatWideAddKernelT = void(&)(size_t, NumT* MAGNUS_RESTRICT, const NumT* MAGNUS_RESTRICT);
+
+    template <class NumT>
+    using MatWideZeroKernelT = void(&)(size_t, NumT* MAGNUS_RESTRICT);
+
+    template <class NumT>
     using SampleUpdateKernelT = void(&)( size_t, size_t, const NumT* MAGNUS_RESTRICT, NumT* MAGNUS_RESTRICT, const NumT* MAGNUS_RESTRICT, double, NumT* MAGNUS_RESTRICT );
+
+    template <class NumT>
+    using SampleUpdateVJPKernelT = void(&)( size_t, size_t, NumT* MAGNUS_RESTRICT, const NumT* MAGNUS_RESTRICT, NumT* MAGNUS_RESTRICT, const NumT* MAGNUS_RESTRICT, double, NumT* MAGNUS_RESTRICT );
 
     template <class NumT, MatrixPolicy MatPolicyT>
     class MatrixView {
@@ -320,6 +337,14 @@ namespace Magnus {
             matrix_policy_t::matwcopy( m_size * m_len, other.m_data, m_data );
         }
 
+        void zero() {
+            matrix_policy_t::matwzero( m_size * m_len, m_data );
+        }
+
+        void add( const MatrixSpan& other ) {
+            matrix_policy_t::matwadd( m_size * m_len, m_data, other.m_data );
+        }
+
         void sample_update(
             const MatrixSpan& A,
             const matrix_t& total,
@@ -332,6 +357,25 @@ namespace Magnus {
                 A.data(),
                 m_data,
                 total.data(),
+                shift,
+                temp.data()
+            );
+        }
+
+        void sample_update_vjp(
+            MatrixSpan& dA,
+            const MatrixSpan& A,
+            const MatrixSpan& prefix,
+            double shift,
+            matrix_t& temp
+        ) {
+            matrix_policy_t::sample_update_vjp(
+                m_dim,
+                m_len,
+                dA.data(),
+                A.data(),
+                m_data,
+                prefix.data(),
                 shift,
                 temp.data()
             );

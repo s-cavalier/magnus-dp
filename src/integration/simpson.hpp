@@ -74,6 +74,93 @@ namespace Magnus {
             }
         }
 
+        void prefix_vjp(matrix_span_t& A, double dt) {
+            matrix_t bar = scratch[0];
+            matrix_t pending = scratch[1];
+            matrix_t next_pending = scratch[2];
+            double half_dt = dt / 2;
+            double third_dt = dt / 3;
+
+            pending.zero();
+            next_pending.zero();
+
+            auto reverse_odd = [&](size_t i) {
+                bar.copy_from(A[i]);
+                A[i - 1].add(bar);
+                A[i].scale(half_dt).add(pending);
+                next_pending.add(bar, half_dt);
+                pending.zero();
+                std::swap(pending, next_pending);
+            };
+
+            auto reverse_even = [&](size_t i) {
+                bar.copy_from(A[i]);
+                A[i - 2].add(bar);
+                A[i].scale(third_dt).add(pending);
+                next_pending.add(bar, 4 * third_dt);
+                pending.copy_from(bar);
+                pending.scale(third_dt);
+                std::swap(pending, next_pending);
+            };
+
+            size_t i = A.length() - 1;
+            if (i % 2 == 1) {
+                reverse_odd(i);
+                --i;
+            }
+
+            while (i > 2) {
+                reverse_even(i);
+                reverse_odd(i - 1);
+                i -= 2;
+            }
+            reverse_even(2);
+
+            bar.copy_from(A[1]);
+            A[1].scale(half_dt).add(pending);
+            A[0].copy_from(bar);
+            A[0].scale(half_dt).add(next_pending);
+        }
+
+        void sum_vjp(matrix_span_t& A, const matrix_t& out, double dt) {
+            size_t len = A.length();
+            size_t simpson_last = (len % 2 == 1) ? len - 1 : len - 2;
+
+            A[0].copy_from(out);
+            A[0].scale(dt / 3);
+            for (size_t i = 1; i < simpson_last; i += 2) {
+                A[i].copy_from(out);
+                A[i].scale(4 * dt / 3);
+            }
+            for (size_t i = 2; i < simpson_last; i += 2) {
+                A[i].copy_from(out);
+                A[i].scale(2 * dt / 3);
+            }
+            A[simpson_last].copy_from(out);
+            A[simpson_last].scale(dt / 3);
+
+            if (simpson_last + 1 < len) {
+                A[simpson_last].add(out, dt / 2);
+                A[simpson_last + 1].copy_from(out);
+                A[simpson_last + 1].scale(dt / 2);
+            }
+        }
+
+        void sum_vjp_add(matrix_span_t& A, const matrix_t& out, double dt) {
+            size_t len = A.length();
+            size_t simpson_last = (len % 2 == 1) ? len - 1 : len - 2;
+
+            A[0].add(out, dt / 3);
+            for (size_t i = 1; i < simpson_last; i += 2) A[i].add(out, 4 * dt / 3);
+            for (size_t i = 2; i < simpson_last; i += 2) A[i].add(out, 2 * dt / 3);
+            A[simpson_last].add(out, dt / 3);
+
+            if (simpson_last + 1 < len) {
+                A[simpson_last].add(out, dt / 2);
+                A[simpson_last + 1].add(out, dt / 2);
+            }
+        }
+
         matrix_t borrow_scratch() {
             return scratch[0];
         }

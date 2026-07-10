@@ -105,6 +105,128 @@ namespace Magnus {
             }
         }
 
+        void prefix_vjp(matrix_span_t& A, double dt) {
+            matrix_t pending = scratch[0];
+            matrix_t g1 = scratch[1];
+            matrix_t g2 = scratch[2];
+            matrix_t g3 = scratch[3];
+            matrix_t g4 = scratch[4];
+            pending.zero();
+
+            size_t start = A.length() - 5;
+            while (true) {
+                g1.copy_from(A[start + 1]);
+                g2.copy_from(A[start + 2]);
+                g3.copy_from(A[start + 3]);
+                g4.copy_from(A[start + 4]);
+
+                A[start].add(g1).add(g2).add(g3).add(g4);
+                A[start + 1]
+                    .scale(dt / 2)
+                    .add(g2, 4 * dt / 3)
+                    .add(g3, 9 * dt / 8)
+                    .add(g4, 64 * dt / 45);
+                A[start + 2]
+                    .scale(dt / 3)
+                    .add(g3, 9 * dt / 8)
+                    .add(g4, 24 * dt / 45);
+                A[start + 3]
+                    .scale(3 * dt / 8)
+                    .add(g4, 64 * dt / 45);
+                A[start + 4]
+                    .scale(14 * dt / 45)
+                    .add(pending);
+
+                pending.copy_from(g1);
+                pending
+                    .scale(dt / 2)
+                    .add(g2, dt / 3)
+                    .add(g3, 3 * dt / 8)
+                    .add(g4, 14 * dt / 45);
+
+                if (start == 0) break;
+                start -= 4;
+            }
+            A[0].copy_from(pending);
+        }
+
+        void sum_vjp(matrix_span_t& A, const matrix_t& out, double dt) {
+            size_t intervals = A.length() - 1;
+            size_t boole_intervals = intervals - intervals % 4;
+
+            if (boole_intervals == 0) {
+                A[0].zero();
+            } else {
+                A[0].copy_from(out);
+                A[0].scale(14 * dt / 45);
+                for (size_t i = 0; i < boole_intervals; i += 4) {
+                    A[i + 1].copy_from(out);
+                    A[i + 1].scale(64 * dt / 45);
+                    A[i + 2].copy_from(out);
+                    A[i + 2].scale(24 * dt / 45);
+                    A[i + 3].copy_from(out);
+                    A[i + 3].scale(64 * dt / 45);
+                }
+                for (size_t i = 4; i < boole_intervals; i += 4) {
+                    A[i].copy_from(out);
+                    A[i].scale(28 * dt / 45);
+                }
+                A[boole_intervals].copy_from(out);
+                A[boole_intervals].scale(14 * dt / 45);
+            }
+
+            size_t tail = intervals - boole_intervals;
+            size_t start = boole_intervals;
+            if (tail == 1) {
+                A[start].add(out, dt / 2);
+                A[start + 1].copy_from(out);
+                A[start + 1].scale(dt / 2);
+            } else if (tail == 2) {
+                A[start].add(out, dt / 3);
+                A[start + 1].copy_from(out);
+                A[start + 1].scale(4 * dt / 3);
+                A[start + 2].copy_from(out);
+                A[start + 2].scale(dt / 3);
+            } else if (tail == 3) {
+                A[start].add(out, 3 * dt / 8);
+                A[start + 1].copy_from(out);
+                A[start + 1].scale(9 * dt / 8);
+                A[start + 2].copy_from(out);
+                A[start + 2].scale(9 * dt / 8);
+                A[start + 3].copy_from(out);
+                A[start + 3].scale(3 * dt / 8);
+            }
+        }
+
+        void sum_vjp_add(matrix_span_t& A, const matrix_t& out, double dt) {
+            size_t intervals = A.length() - 1;
+            size_t boole_intervals = intervals - intervals % 4;
+
+            for (size_t i = 0; i < boole_intervals; i += 4) {
+                A[i].add(out, 14 * dt / 45);
+                A[i + 1].add(out, 64 * dt / 45);
+                A[i + 2].add(out, 24 * dt / 45);
+                A[i + 3].add(out, 64 * dt / 45);
+                A[i + 4].add(out, 14 * dt / 45);
+            }
+
+            size_t tail = intervals - boole_intervals;
+            size_t start = boole_intervals;
+            if (tail == 1) {
+                A[start].add(out, dt / 2);
+                A[start + 1].add(out, dt / 2);
+            } else if (tail == 2) {
+                A[start].add(out, dt / 3);
+                A[start + 1].add(out, 4 * dt / 3);
+                A[start + 2].add(out, dt / 3);
+            } else if (tail == 3) {
+                A[start].add(out, 3 * dt / 8);
+                A[start + 1].add(out, 9 * dt / 8);
+                A[start + 2].add(out, 9 * dt / 8);
+                A[start + 3].add(out, 3 * dt / 8);
+            }
+        }
+
         matrix_t borrow_scratch() {
             return scratch[0];
         }
