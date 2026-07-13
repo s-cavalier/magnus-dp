@@ -106,7 +106,7 @@ namespace Magnus {
             mm_kernel(dim, a, b, out);
         }
 
-        static void matmul_vjp(size_t dim, NumT* MAGNUS_RESTRICT da, const NumT* MAGNUS_RESTRICT a, const NumT* MAGNUS_RESTRICT dout, const NumT* MAGNUS_RESTRICT b, NumT* MAGNUS_RESTRICT db) {
+        static void matmul_vjp(size_t dim, NumT* MAGNUS_RESTRICT da, const NumT* MAGNUS_RESTRICT a, const NumT* MAGNUS_RESTRICT dout, const NumT* b, NumT* db) {
             mmvjp_kernel(dim, da, a, dout, b, db);
         }
 

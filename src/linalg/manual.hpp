@@ -21,8 +21,8 @@ namespace Magnus {
         NumT* MAGNUS_RESTRICT da,
         const NumT* MAGNUS_RESTRICT a,
         const NumT* MAGNUS_RESTRICT dout,
-        const NumT* MAGNUS_RESTRICT b,
-        NumT* MAGNUS_RESTRICT db
+        const NumT* b,
+        NumT* db
     ) {
         for (size_t i = 0; i < dim; ++i) {
             for (size_t k = 0; k < dim; ++k) {

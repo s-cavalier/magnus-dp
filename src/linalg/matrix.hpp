@@ -44,7 +44,7 @@ namespace Magnus {
 
     // Accumulates dA and overwrites dB. B and dB may alias.
     template <class NumT>
-    using MatMulVJPKernelT = void(&)(size_t, NumT* MAGNUS_RESTRICT, const NumT* MAGNUS_RESTRICT, const NumT* MAGNUS_RESTRICT, const NumT* MAGNUS_RESTRICT, NumT* MAGNUS_RESTRICT);
+    using MatMulVJPKernelT = void(&)(size_t, NumT* MAGNUS_RESTRICT, const NumT* MAGNUS_RESTRICT, const NumT* MAGNUS_RESTRICT, const NumT*, NumT*);
 
     template <class NumT>
     using MatAddKernelT = void(&)(size_t, NumT* MAGNUS_RESTRICT, const NumT* MAGNUS_RESTRICT, double);

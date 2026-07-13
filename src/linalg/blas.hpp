@@ -193,8 +193,8 @@ namespace Magnus {
         NumT* MAGNUS_RESTRICT da,
         const NumT* MAGNUS_RESTRICT a,
         const NumT* MAGNUS_RESTRICT g,
-        const NumT* MAGNUS_RESTRICT b,
-        NumT* MAGNUS_RESTRICT bar_b
+        const NumT* b,
+        NumT* bar_b
     ) {
         if constexpr (std::is_same_v<NumT, float>) {
             cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans, dim, dim, dim, 1, g, dim, b, dim, 1, da, dim);
