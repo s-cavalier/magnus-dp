@@ -55,6 +55,22 @@ def compute(
 ) -> tuple[np.ndarray, np.ndarray]: ...
 
 @overload
+def compute(
+    n: int,
+    f: Callable[[np.ndarray], np.ndarray],
+    t0: float,
+    tf: float,
+    samples: int,
+    *,
+    op: KernelOpName = "sum",
+    dtype: Any = None,
+    vectorized: bool = True,
+    matrix_backend: MatrixBackendName = "Auto",
+    integrator: IntegratorName = "Auto",
+    record_vjp: bool,
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]: ...
+
+@overload
 def compute_sc(
     n: int,
     f: Callable[[np.ndarray], np.ndarray],
@@ -86,3 +102,51 @@ def compute_sc(
     integrator: IntegratorName = "Auto",
     record_vjp: Literal[True],
 ) -> tuple[np.ndarray, np.ndarray]: ...
+
+@overload
+def compute_sc(
+    n: int,
+    f: Callable[[np.ndarray], np.ndarray],
+    t0: float,
+    tf: float,
+    samples: int,
+    *,
+    op: KernelOpName = "sum",
+    dtype: Any = None,
+    vectorized: bool = True,
+    integrator: IntegratorName = "Auto",
+    record_vjp: bool,
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]: ...
+
+def compute_vjp(
+    n: int,
+    f: Callable[[np.ndarray], np.ndarray],
+    cotangent: np.ndarray,
+    t0: float,
+    tf: float,
+    samples: int,
+    *,
+    op: KernelOpName = "sum",
+    dtype: Any = None,
+    vectorized: bool = True,
+    matrix_backend: MatrixBackendName = "Auto",
+    integrator: IntegratorName = "Auto",
+    vjp_data: np.ndarray | None = None,
+) -> np.ndarray:
+    """Compute the VJP with respect to sampled matrix data."""
+
+def compute_sc_vjp(
+    n: int,
+    f: Callable[[np.ndarray], np.ndarray],
+    cotangent: np.ndarray,
+    t0: float,
+    tf: float,
+    samples: int,
+    *,
+    op: KernelOpName = "sum",
+    dtype: Any = None,
+    vectorized: bool = True,
+    integrator: IntegratorName = "Auto",
+    vjp_data: np.ndarray | None = None,
+) -> np.ndarray:
+    """Compute the VJP with respect to sampled SpaceCurve data."""

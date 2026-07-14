@@ -22,8 +22,8 @@ namespace Magnus {
             };
         }
 
-        static bool valid(const Params& p) { return p.dim == N; }
-        static bool use(const Params& p) { return valid(p); }
+        static bool valid(const ParamsBase& p) { return p.dim == N; }
+        static bool use(const ParamsBase& p) { return valid(p); }
     };
 
     struct ManualBackend {
@@ -32,8 +32,8 @@ namespace Magnus {
 
         static constexpr std::string_view dispatch_name() { return "Manual"; }
 
-        static bool valid([[maybe_unused]] const Params&) { return true; }
-        static bool use( const Params& p ) { return p.dim < 64; }
+        static bool valid([[maybe_unused]] const ParamsBase&) { return true; }
+        static bool use(const ParamsBase& p) { return p.dim < 64; }
     };
 
     struct BlasBackend {
@@ -42,8 +42,8 @@ namespace Magnus {
 
         static constexpr std::string_view dispatch_name() { return "Blas"; }
 
-        static bool valid([[maybe_unused]] const Params&) { return true; }
-        static bool use([[maybe_unused]] const Params&) { return true; }
+        static bool valid([[maybe_unused]] const ParamsBase&) { return true; }
+        static bool use([[maybe_unused]] const ParamsBase&) { return true; }
     };
 
 namespace SpaceCurve {
@@ -54,8 +54,8 @@ namespace SpaceCurve {
 
         static constexpr std::string_view dispatch_name() { return "SpaceCurve"; }
 
-        static bool valid(const Params& p) { return p.dim == 2; }
-        static bool use([[maybe_unused]] const Params&) { return true; }
+        static bool valid(const ParamsBase& p) { return p.dim == 2; }
+        static bool use([[maybe_unused]] const ParamsBase&) { return true; }
     };
 
 }

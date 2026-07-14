@@ -1,6 +1,7 @@
 #include "composer/backends.hpp"
 
 #include <exception>
+#include <optional>
 #include <string_view>
 #include <type_traits>
 
@@ -24,31 +25,31 @@ ffi::Error matrix_impl(
     double tf,
     std::string_view matrix_backend,
     std::string_view integrator,
-    bool record_vjp,
     size_t samples,
     size_t dim,
     ffi::AnyBuffer data,
     ffi::Result<ffi::AnyBuffer> out
 ) {
-    run_raw<NumT>(
+    detail::run_raw_impl<NumT>(
         n,
         data.typed_data<NumT>(),
         out->typed_data<NumT>(),
+        nullptr,
         samples,
         dim,
         t0,
         tf,
-        op,
-        matrix_backend,
-        integrator,
-        record_vjp
+        Dispatch::op_from_str(op),
+        MatrixBackends::resolve(matrix_backend),
+        IntegratorBackends::resolve(integrator),
+        false
     );
 
     return ffi::Error::Success();
 }
 
 template <Numeric NumT>
-ffi::Error matrix_impl_vjp(
+ffi::Error matrix_impl_fwd(
     size_t n,
     std::string_view op,
     double t0,
@@ -59,20 +60,20 @@ ffi::Error matrix_impl_vjp(
     size_t dim,
     ffi::AnyBuffer data,
     ffi::Result<ffi::AnyBuffer> out,
-    ffi::Result<ffi::AnyBuffer> vjp_out
+    ffi::Result<ffi::AnyBuffer> carry_out
 ) {
-    run_raw<NumT>(
+    detail::run_raw_impl<NumT>(
         n,
         data.typed_data<NumT>(),
         out->typed_data<NumT>(),
-        vjp_out->typed_data<NumT>(),
+        carry_out->typed_data<NumT>(),
         samples,
         dim,
         t0,
         tf,
-        op,
-        matrix_backend,
-        integrator,
+        Dispatch::op_from_str(op),
+        MatrixBackends::resolve(matrix_backend),
+        IntegratorBackends::resolve(integrator),
         true
     );
 
@@ -86,28 +87,28 @@ ffi::Error spacecurve_impl(
     double t0,
     double tf,
     std::string_view integrator,
-    bool record_vjp,
     size_t samples,
     ffi::AnyBuffer data,
     ffi::Result<ffi::AnyBuffer> out
 ) {
-    run_spacecurve_raw<NumT>(
+    detail::run_spacecurve_raw_impl<NumT>(
         n,
         data.typed_data<NumT>(),
         out->typed_data<NumT>(),
+        nullptr,
         samples,
         t0,
         tf,
-        op,
-        integrator,
-        record_vjp
+        Dispatch::op_from_str(op),
+        IntegratorBackends::resolve(integrator),
+        false
     );
 
     return ffi::Error::Success();
 }
 
 template <Numeric NumT>
-ffi::Error spacecurve_impl_vjp(
+ffi::Error spacecurve_impl_fwd(
     size_t n,
     std::string_view op,
     double t0,
@@ -116,19 +117,81 @@ ffi::Error spacecurve_impl_vjp(
     size_t samples,
     ffi::AnyBuffer data,
     ffi::Result<ffi::AnyBuffer> out,
-    ffi::Result<ffi::AnyBuffer> vjp_out
+    ffi::Result<ffi::AnyBuffer> carry_out
 ) {
-    run_spacecurve_raw<NumT>(
+    detail::run_spacecurve_raw_impl<NumT>(
         n,
         data.typed_data<NumT>(),
         out->typed_data<NumT>(),
-        vjp_out->typed_data<NumT>(),
+        carry_out->typed_data<NumT>(),
         samples,
         t0,
         tf,
-        op,
-        integrator,
+        Dispatch::op_from_str(op),
+        IntegratorBackends::resolve(integrator),
         true
+    );
+
+    return ffi::Error::Success();
+}
+
+template <Numeric NumT>
+ffi::Error matrix_impl_bwd(
+    size_t n,
+    std::string_view op,
+    double t0,
+    double tf,
+    std::string_view matrix_backend,
+    std::string_view integrator,
+    size_t samples,
+    size_t dim,
+    ffi::AnyBuffer data,
+    ffi::AnyBuffer cotangent,
+    std::optional<ffi::AnyBuffer> carry,
+    ffi::Result<ffi::AnyBuffer> out
+) {
+    detail::run_vjp_raw_impl<NumT>(
+        n,
+        data.typed_data<NumT>(),
+        cotangent.typed_data<NumT>(),
+        out->typed_data<NumT>(),
+        carry ? carry->typed_data<NumT>() : nullptr,
+        samples,
+        dim,
+        t0,
+        tf,
+        Dispatch::op_from_str(op),
+        MatrixBackends::resolve(matrix_backend),
+        IntegratorBackends::resolve(integrator)
+    );
+
+    return ffi::Error::Success();
+}
+
+template <Numeric NumT>
+ffi::Error spacecurve_impl_bwd(
+    size_t n,
+    std::string_view op,
+    double t0,
+    double tf,
+    std::string_view integrator,
+    size_t samples,
+    ffi::AnyBuffer data,
+    ffi::AnyBuffer cotangent,
+    std::optional<ffi::AnyBuffer> carry,
+    ffi::Result<ffi::AnyBuffer> out
+) {
+    detail::run_spacecurve_vjp_raw_impl<NumT>(
+        n,
+        data.typed_data<NumT>(),
+        cotangent.typed_data<NumT>(),
+        out->typed_data<NumT>(),
+        carry ? carry->typed_data<NumT>() : nullptr,
+        samples,
+        t0,
+        tf,
+        Dispatch::op_from_str(op),
+        IntegratorBackends::resolve(integrator)
     );
 
     return ffi::Error::Success();
@@ -155,7 +218,6 @@ ffi::Error matrix_dispatch(
     double tf,
     std::string_view matrix_backend,
     std::string_view integrator,
-    bool record_vjp,
     ffi::AnyBuffer data,
     ffi::Result<ffi::AnyBuffer> out
 ) {
@@ -174,7 +236,6 @@ ffi::Error matrix_dispatch(
             tf,
             matrix_backend,
             integrator,
-            record_vjp,
             input_shape.samples,
             input_shape.dim,
             data,
@@ -187,7 +248,7 @@ ffi::Error matrix_dispatch(
     }
 }
 
-ffi::Error matrix_dispatch_vjp(
+ffi::Error matrix_dispatch_fwd(
     size_t n,
     std::string_view op_attr,
     double t0,
@@ -196,18 +257,19 @@ ffi::Error matrix_dispatch_vjp(
     std::string_view integrator,
     ffi::AnyBuffer data,
     ffi::Result<ffi::AnyBuffer> out,
-    ffi::Result<ffi::AnyBuffer> vjp_out
+    ffi::Result<ffi::AnyBuffer> carry_out
 ) {
     try {
         if (data.element_type() != out->element_type()) return ffi::Error::InvalidArgument("input and output dtypes must match");
-        if (data.element_type() != vjp_out->element_type()) return ffi::Error::InvalidArgument("input and vjp output dtypes must match");
+        if (data.element_type() != carry_out->element_type()) return ffi::Error::InvalidArgument("input and carry dtypes must match");
 
         detail::MatrixInputShape input_shape = detail::matrix_input_shape(n, data.dimensions());
         detail::validate_matrix_output_shape(op_attr, n, input_shape.dim, out->dimensions());
+        detail::validate_vjp_data_shape(n, input_shape.samples, input_shape.dim, carry_out->dimensions());
 
         MAGNUS_ELEMENT_TYPE_DISPATCH(
             data.element_type(),
-            matrix_impl_vjp,
+            matrix_impl_fwd,
             n,
             op_attr,
             t0,
@@ -218,12 +280,12 @@ ffi::Error matrix_dispatch_vjp(
             input_shape.dim,
             data,
             out,
-            vjp_out
+            carry_out
         );
     } catch (const std::exception& err) {
         return ffi::Error::InvalidArgument(err.what());
     } catch (...) {
-        return ffi::Error::InvalidArgument("unknown magnus matrix VJP FFI error");
+        return ffi::Error::InvalidArgument("unknown magnus matrix forward FFI error");
     }
 }
 
@@ -233,7 +295,6 @@ ffi::Error spacecurve_dispatch(
     double t0,
     double tf,
     std::string_view integrator,
-    bool record_vjp,
     ffi::AnyBuffer data,
     ffi::Result<ffi::AnyBuffer> out
 ) {
@@ -251,7 +312,6 @@ ffi::Error spacecurve_dispatch(
             t0,
             tf,
             integrator,
-            record_vjp,
             input_shape.samples,
             data,
             out
@@ -263,7 +323,100 @@ ffi::Error spacecurve_dispatch(
     }
 }
 
-ffi::Error spacecurve_dispatch_vjp(
+ffi::Error matrix_dispatch_bwd(
+    size_t n,
+    std::string_view op_attr,
+    double t0,
+    double tf,
+    std::string_view matrix_backend,
+    std::string_view integrator,
+    ffi::AnyBuffer data,
+    ffi::AnyBuffer cotangent,
+    std::optional<ffi::AnyBuffer> carry,
+    ffi::Result<ffi::AnyBuffer> out
+) {
+    try {
+        if (data.element_type() != cotangent.element_type()) return ffi::Error::InvalidArgument("input and cotangent dtypes must match");
+        if (data.element_type() != out->element_type()) return ffi::Error::InvalidArgument("input and output dtypes must match");
+
+        detail::MatrixInputShape input_shape = detail::matrix_input_shape(n, data.dimensions());
+        detail::validate_matrix_output_shape(op_attr, n, input_shape.dim, cotangent.dimensions());
+        detail::validate_shape(out->dimensions(), {input_shape.samples, input_shape.dim, input_shape.dim}, "matrix VJP output must match the input shape");
+
+        if (carry) {
+            if (data.element_type() != carry->element_type()) return ffi::Error::InvalidArgument("input and carry dtypes must match");
+            detail::validate_vjp_data_shape(n, input_shape.samples, input_shape.dim, carry->dimensions());
+        }
+
+        MAGNUS_ELEMENT_TYPE_DISPATCH(
+            data.element_type(),
+            matrix_impl_bwd,
+            n,
+            op_attr,
+            t0,
+            tf,
+            matrix_backend,
+            integrator,
+            input_shape.samples,
+            input_shape.dim,
+            data,
+            cotangent,
+            carry,
+            out
+        );
+    } catch (const std::exception& err) {
+        return ffi::Error::InvalidArgument(err.what());
+    } catch (...) {
+        return ffi::Error::InvalidArgument("unknown magnus matrix backward FFI error");
+    }
+}
+
+ffi::Error spacecurve_dispatch_bwd(
+    size_t n,
+    std::string_view op_attr,
+    double t0,
+    double tf,
+    std::string_view integrator,
+    ffi::AnyBuffer data,
+    ffi::AnyBuffer cotangent,
+    std::optional<ffi::AnyBuffer> carry,
+    ffi::Result<ffi::AnyBuffer> out
+) {
+    try {
+        if (data.element_type() != cotangent.element_type()) return ffi::Error::InvalidArgument("input and cotangent dtypes must match");
+        if (data.element_type() != out->element_type()) return ffi::Error::InvalidArgument("input and output dtypes must match");
+
+        detail::SpaceCurveInputShape input_shape = detail::spacecurve_input_shape(n, data.dimensions());
+        detail::validate_spacecurve_output_shape(op_attr, n, cotangent.dimensions());
+        detail::validate_shape(out->dimensions(), {input_shape.samples, size_t{3}}, "SpaceCurve VJP output must match the input shape");
+
+        if (carry) {
+            if (data.element_type() != carry->element_type()) return ffi::Error::InvalidArgument("input and carry dtypes must match");
+            detail::validate_vjp_data_shape(n, input_shape.samples, 2, carry->dimensions());
+        }
+
+        MAGNUS_ELEMENT_TYPE_DISPATCH(
+            data.element_type(),
+            spacecurve_impl_bwd,
+            n,
+            op_attr,
+            t0,
+            tf,
+            integrator,
+            input_shape.samples,
+            data,
+            cotangent,
+            carry,
+            out
+        );
+    } catch (const std::exception& err) {
+        return ffi::Error::InvalidArgument(err.what());
+    } catch (...) {
+        return ffi::Error::InvalidArgument("unknown magnus SpaceCurve backward FFI error");
+    }
+}
+
+ffi::Error spacecurve_dispatch_fwd(
     size_t n,
     std::string_view op_attr,
     double t0,
@@ -271,18 +424,19 @@ ffi::Error spacecurve_dispatch_vjp(
     std::string_view integrator,
     ffi::AnyBuffer data,
     ffi::Result<ffi::AnyBuffer> out,
-    ffi::Result<ffi::AnyBuffer> vjp_out
+    ffi::Result<ffi::AnyBuffer> carry_out
 ) {
     try {
         if (data.element_type() != out->element_type()) return ffi::Error::InvalidArgument("input and output dtypes must match");
-        if (data.element_type() != vjp_out->element_type()) return ffi::Error::InvalidArgument("input and vjp output dtypes must match");
+        if (data.element_type() != carry_out->element_type()) return ffi::Error::InvalidArgument("input and carry dtypes must match");
 
         detail::SpaceCurveInputShape input_shape = detail::spacecurve_input_shape(n, data.dimensions());
         detail::validate_spacecurve_output_shape(op_attr, n, out->dimensions());
+        detail::validate_vjp_data_shape(n, input_shape.samples, 2, carry_out->dimensions());
 
         MAGNUS_ELEMENT_TYPE_DISPATCH(
             data.element_type(),
-            spacecurve_impl_vjp,
+            spacecurve_impl_fwd,
             n,
             op_attr,
             t0,
@@ -291,12 +445,12 @@ ffi::Error spacecurve_dispatch_vjp(
             input_shape.samples,
             data,
             out,
-            vjp_out
+            carry_out
         );
     } catch (const std::exception& err) {
         return ffi::Error::InvalidArgument(err.what());
     } catch (...) {
-        return ffi::Error::InvalidArgument("unknown magnus spacecurve VJP FFI error");
+        return ffi::Error::InvalidArgument("unknown magnus spacecurve forward FFI error");
     }
 }
 
@@ -312,14 +466,13 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Attr<double>("tf")
         .Attr<std::string_view>("matrix_backend")
         .Attr<std::string_view>("integrator")
-        .Attr<bool>("record_vjp")
         .Arg<ffi::AnyBuffer>()
         .Ret<ffi::AnyBuffer>()
 );
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
-    magnus_matrix_vjp,
-    matrix_dispatch_vjp,
+    magnus_matrix_fwd,
+    matrix_dispatch_fwd,
     ffi::Ffi::Bind()
         .Attr<size_t>("n")
         .Attr<std::string_view>("op")
@@ -341,14 +494,13 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Attr<double>("t0")
         .Attr<double>("tf")
         .Attr<std::string_view>("integrator")
-        .Attr<bool>("record_vjp")
         .Arg<ffi::AnyBuffer>()
         .Ret<ffi::AnyBuffer>()
 );
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
-    magnus_spacecurve_vjp,
-    spacecurve_dispatch_vjp,
+    magnus_spacecurve_fwd,
+    spacecurve_dispatch_fwd,
     ffi::Ffi::Bind()
         .Attr<size_t>("n")
         .Attr<std::string_view>("op")
@@ -357,6 +509,37 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Attr<std::string_view>("integrator")
         .Arg<ffi::AnyBuffer>()
         .Ret<ffi::AnyBuffer>()
+        .Ret<ffi::AnyBuffer>()
+);
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(
+    magnus_matrix_bwd,
+    matrix_dispatch_bwd,
+    ffi::Ffi::Bind()
+        .Attr<size_t>("n")
+        .Attr<std::string_view>("op")
+        .Attr<double>("t0")
+        .Attr<double>("tf")
+        .Attr<std::string_view>("matrix_backend")
+        .Attr<std::string_view>("integrator")
+        .Arg<ffi::AnyBuffer>()
+        .Arg<ffi::AnyBuffer>()
+        .OptionalArg<ffi::AnyBuffer>()
+        .Ret<ffi::AnyBuffer>()
+);
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(
+    magnus_spacecurve_bwd,
+    spacecurve_dispatch_bwd,
+    ffi::Ffi::Bind()
+        .Attr<size_t>("n")
+        .Attr<std::string_view>("op")
+        .Attr<double>("t0")
+        .Attr<double>("tf")
+        .Attr<std::string_view>("integrator")
+        .Arg<ffi::AnyBuffer>()
+        .Arg<ffi::AnyBuffer>()
+        .OptionalArg<ffi::AnyBuffer>()
         .Ret<ffi::AnyBuffer>()
 );
 
@@ -373,9 +556,11 @@ py::capsule encapsulate_ffi_handler(T* fn) {
 py::dict registrations() {
     py::dict targets;
     targets["magnus_matrix"] = encapsulate_ffi_handler(magnus_matrix);
-    targets["magnus_matrix_vjp"] = encapsulate_ffi_handler(magnus_matrix_vjp);
+    targets["magnus_matrix_fwd"] = encapsulate_ffi_handler(magnus_matrix_fwd);
     targets["magnus_spacecurve"] = encapsulate_ffi_handler(magnus_spacecurve);
-    targets["magnus_spacecurve_vjp"] = encapsulate_ffi_handler(magnus_spacecurve_vjp);
+    targets["magnus_spacecurve_fwd"] = encapsulate_ffi_handler(magnus_spacecurve_fwd);
+    targets["magnus_matrix_bwd"] = encapsulate_ffi_handler(magnus_matrix_bwd);
+    targets["magnus_spacecurve_bwd"] = encapsulate_ffi_handler(magnus_spacecurve_bwd);
     return targets;
 }
 

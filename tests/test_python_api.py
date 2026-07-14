@@ -39,6 +39,198 @@ def spacecurve_value(t, dtype=np.float64):
     return spacecurve_values(np.asarray([t]), dtype=dtype)[0]
 
 
+def gradient_values(shape, dtype, real_bounds, imaginary_bounds):
+    dtype = np.dtype(dtype)
+    real_dtype = np.empty((), dtype=dtype).real.dtype
+    real = np.linspace(*real_bounds, np.prod(shape), dtype=real_dtype).reshape(shape)
+    if np.issubdtype(dtype, np.complexfloating):
+        imaginary = np.linspace(*imaginary_bounds, np.prod(shape), dtype=real_dtype).reshape(shape)
+        real = real + 1j * imaginary
+    return np.asarray(real, dtype=dtype)
+
+
+def dense_matrix_values(samples, dim, dtype=np.float64):
+    dtype = np.dtype(dtype)
+    real_dtype = np.empty((), dtype=dtype).real.dtype
+    t = np.linspace(0.0, 1.0, samples, dtype=real_dtype)[:, None, None]
+    row = np.arange(1, dim + 1, dtype=real_dtype)[None, :, None]
+    column = np.arange(1, dim + 1, dtype=real_dtype)[None, None, :]
+    data = np.sin((row + 0.3 * column) * t) + 0.1 * row - 0.07 * column
+    if np.issubdtype(dtype, np.complexfloating):
+        data = data + 1j * (np.cos((0.2 * row + column) * t) - 0.15 * t)
+    return np.asarray(data, dtype=dtype)
+
+
+def assert_matrix_vjp_directional(
+    data,
+    *,
+    n=4,
+    op="sum",
+    matrix_backend="Fixed2",
+    integrator="Boole",
+    epsilon=1e-6,
+    rtol=1e-7,
+    atol=1e-9,
+):
+    samples = data.shape[0]
+    direction = gradient_values(data.shape, data.dtype, (-0.3, 0.7), (0.5, -0.2))
+
+    def f(_):
+        return data
+
+    kwargs = {
+        "op": op,
+        "dtype": data.dtype,
+        "matrix_backend": matrix_backend,
+        "integrator": integrator,
+    }
+    out, vjp_data = magnus.compute(
+        n,
+        f,
+        0.0,
+        1.0,
+        samples,
+        record_vjp=True,
+        **kwargs,
+    )
+    cotangent = gradient_values(out.shape, data.dtype, (0.2, 1.1), (-0.4, 0.3))
+    actual = magnus.compute_vjp(
+        n,
+        f,
+        cotangent,
+        0.0,
+        1.0,
+        samples,
+        vjp_data=vjp_data,
+        **kwargs,
+    )
+    recomputed = magnus.compute_vjp(
+        n,
+        f,
+        cotangent,
+        0.0,
+        1.0,
+        samples,
+        **kwargs,
+    )
+
+    perturbation = np.asarray(epsilon * direction, dtype=data.dtype)
+    plus = magnus.compute(
+        n,
+        lambda _: data + perturbation,
+        0.0,
+        1.0,
+        samples,
+        **kwargs,
+    )
+    minus = magnus.compute(
+        n,
+        lambda _: data - perturbation,
+        0.0,
+        1.0,
+        samples,
+        **kwargs,
+    )
+
+    # Complex kernels expose the analytic, bilinear VJP rather than a Hermitian pairing.
+    expected_directional = np.sum((plus - minus) * cotangent) / (2 * epsilon)
+    actual_directional = np.sum(actual * direction)
+    np.testing.assert_allclose(actual_directional, expected_directional, rtol=rtol, atol=atol)
+
+    real_dtype = np.empty((), dtype=data.dtype).real.dtype
+    carry_tolerance = max(1e-12, 20 * np.finfo(real_dtype).eps)
+    np.testing.assert_allclose(
+        recomputed,
+        actual,
+        rtol=carry_tolerance,
+        atol=carry_tolerance,
+    )
+
+
+def assert_spacecurve_vjp_directional(
+    data,
+    *,
+    n=4,
+    op="sum",
+    integrator="Boole",
+    epsilon=1e-6,
+    rtol=1e-7,
+    atol=1e-9,
+):
+    samples = data.shape[0]
+    direction = gradient_values(data.shape, data.dtype, (-0.4, 0.6), (0.3, -0.5))
+
+    def f(_):
+        return data
+
+    kwargs = {
+        "op": op,
+        "dtype": data.dtype,
+        "integrator": integrator,
+    }
+    out, vjp_data = magnus.compute_sc(
+        n,
+        f,
+        0.0,
+        1.0,
+        samples,
+        record_vjp=True,
+        **kwargs,
+    )
+    cotangent = gradient_values(out.shape, data.dtype, (0.2, 1.1), (-0.3, 0.4))
+    actual = magnus.compute_sc_vjp(
+        n,
+        f,
+        cotangent,
+        0.0,
+        1.0,
+        samples,
+        vjp_data=vjp_data,
+        **kwargs,
+    )
+    recomputed = magnus.compute_sc_vjp(
+        n,
+        f,
+        cotangent,
+        0.0,
+        1.0,
+        samples,
+        **kwargs,
+    )
+
+    perturbation = np.asarray(epsilon * direction, dtype=data.dtype)
+    plus = magnus.compute_sc(
+        n,
+        lambda _: data + perturbation,
+        0.0,
+        1.0,
+        samples,
+        **kwargs,
+    )
+    minus = magnus.compute_sc(
+        n,
+        lambda _: data - perturbation,
+        0.0,
+        1.0,
+        samples,
+        **kwargs,
+    )
+
+    # SpaceCurve follows the same analytic, bilinear convention as matrix kernels.
+    expected_directional = np.sum((plus - minus) * cotangent) / (2 * epsilon)
+    actual_directional = np.sum(actual * direction)
+    np.testing.assert_allclose(actual_directional, expected_directional, rtol=rtol, atol=atol)
+
+    real_dtype = np.empty((), dtype=data.dtype).real.dtype
+    carry_tolerance = max(1e-12, 20 * np.finfo(real_dtype).eps)
+    np.testing.assert_allclose(
+        recomputed,
+        actual,
+        rtol=carry_tolerance,
+        atol=carry_tolerance,
+    )
+
+
 def test_public_api_exports_only_compute_entrypoints():
     assert set(magnus.__all__) == {
         "max_order",
@@ -49,6 +241,8 @@ def test_public_api_exports_only_compute_entrypoints():
         "replace_gl_table",
         "compute",
         "compute_sc",
+        "compute_vjp",
+        "compute_sc_vjp",
     }
     assert callable(magnus.replace_gl_table)
     assert callable(magnus.compute)
@@ -215,6 +409,240 @@ def test_compute_sc_can_return_vjp_data():
 
     assert output.shape == (3,)
     assert vjp_data.shape == (3, 3, 9, 2, 2)
+
+
+@pytest.mark.parametrize("op", ["one", "many", "sum"])
+def test_compute_vjp_matches_directional_finite_difference(op):
+    samples = 9
+    n = 4
+    data = matrix_values(np.linspace(0.0, 1.0, samples))
+    direction = np.linspace(-0.3, 0.7, data.size).reshape(data.shape)
+
+    def f(_):
+        return data
+
+    out, vjp_data = magnus.compute(
+        n,
+        f,
+        0.0,
+        1.0,
+        samples,
+        op=op,
+        matrix_backend="Fixed2",
+        integrator="Boole",
+        record_vjp=True,
+    )
+    cotangent = np.linspace(0.2, 1.1, out.size).reshape(out.shape)
+    actual = magnus.compute_vjp(
+        n,
+        f,
+        cotangent,
+        0.0,
+        1.0,
+        samples,
+        op=op,
+        matrix_backend="Fixed2",
+        integrator="Boole",
+        vjp_data=vjp_data,
+    )
+    recomputed = magnus.compute_vjp(
+        n,
+        f,
+        cotangent,
+        0.0,
+        1.0,
+        samples,
+        op=op,
+        matrix_backend="Fixed2",
+        integrator="Boole",
+    )
+
+    epsilon = 1e-6
+    data += epsilon * direction
+    plus = magnus.compute(n, f, 0.0, 1.0, samples, op=op, matrix_backend="Fixed2", integrator="Boole")
+    data -= 2 * epsilon * direction
+    minus = magnus.compute(n, f, 0.0, 1.0, samples, op=op, matrix_backend="Fixed2", integrator="Boole")
+    data += epsilon * direction
+
+    expected_directional = np.sum((plus - minus) * cotangent) / (2 * epsilon)
+    actual_directional = np.sum(actual * direction)
+    np.testing.assert_allclose(actual_directional, expected_directional, rtol=1e-7, atol=1e-9)
+    np.testing.assert_allclose(recomputed, actual, rtol=1e-12, atol=1e-12)
+
+
+@pytest.mark.parametrize("op", ["one", "many", "sum"])
+def test_compute_sc_vjp_matches_directional_finite_difference(op):
+    samples = 9
+    n = 4
+    data = spacecurve_values(np.linspace(0.0, 1.0, samples))
+    direction = np.linspace(-0.4, 0.6, data.size).reshape(data.shape)
+
+    def f(_):
+        return data
+
+    out, vjp_data = magnus.compute_sc(
+        n,
+        f,
+        0.0,
+        1.0,
+        samples,
+        op=op,
+        integrator="Boole",
+        record_vjp=True,
+    )
+    cotangent = np.linspace(0.2, 1.1, out.size).reshape(out.shape)
+    actual = magnus.compute_sc_vjp(
+        n,
+        f,
+        cotangent,
+        0.0,
+        1.0,
+        samples,
+        op=op,
+        integrator="Boole",
+        vjp_data=vjp_data,
+    )
+    recomputed = magnus.compute_sc_vjp(
+        n,
+        f,
+        cotangent,
+        0.0,
+        1.0,
+        samples,
+        op=op,
+        integrator="Boole",
+    )
+
+    epsilon = 1e-6
+    data += epsilon * direction
+    plus = magnus.compute_sc(n, f, 0.0, 1.0, samples, op=op, integrator="Boole")
+    data -= 2 * epsilon * direction
+    minus = magnus.compute_sc(n, f, 0.0, 1.0, samples, op=op, integrator="Boole")
+    data += epsilon * direction
+
+    expected_directional = np.sum((plus - minus) * cotangent) / (2 * epsilon)
+    actual_directional = np.sum(actual * direction)
+    np.testing.assert_allclose(actual_directional, expected_directional, rtol=1e-7, atol=1e-9)
+    np.testing.assert_allclose(recomputed, actual, rtol=1e-12, atol=1e-12)
+
+
+@pytest.mark.parametrize("integrator", ["Riemann", "Trapezoid", "Simpson", "Boole"])
+def test_compute_vjp_matches_finite_difference_for_each_integrator(integrator):
+    data = matrix_values(np.linspace(0.0, 1.0, 9))
+    assert_matrix_vjp_directional(data, integrator=integrator)
+
+
+@pytest.mark.parametrize("integrator", ["Riemann", "Trapezoid", "Simpson", "Boole"])
+def test_compute_sc_vjp_matches_finite_difference_for_each_integrator(integrator):
+    data = spacecurve_values(np.linspace(0.0, 1.0, 9))
+    assert_spacecurve_vjp_directional(data, integrator=integrator)
+
+
+@pytest.mark.parametrize("matrix_backend", ["Fixed2", "Manual", "Blas"])
+def test_compute_vjp_matches_finite_difference_for_each_matrix_backend(matrix_backend):
+    dim = 2 if matrix_backend == "Fixed2" else 3
+    data = dense_matrix_values(9, dim)
+    assert_matrix_vjp_directional(data, op="many", matrix_backend=matrix_backend)
+
+
+@pytest.mark.parametrize(
+    ("n", "samples"),
+    [(1, 5), (2, 9), (3, 13), (6, 17)],
+)
+def test_compute_vjp_matches_finite_difference_across_orders_and_sample_counts(n, samples):
+    data = matrix_values(np.linspace(0.0, 1.0, samples))
+    assert_matrix_vjp_directional(data, n=n)
+
+
+@pytest.mark.parametrize(
+    ("n", "samples"),
+    [(1, 5), (2, 9), (3, 13), (6, 17)],
+)
+def test_compute_sc_vjp_matches_finite_difference_across_orders_and_sample_counts(n, samples):
+    data = spacecurve_values(np.linspace(0.0, 1.0, samples))
+    assert_spacecurve_vjp_directional(data, n=n)
+
+
+@pytest.mark.parametrize(
+    ("dtype", "epsilon", "rtol", "atol"),
+    [
+        (np.float32, 2e-3, 3e-3, 3e-4),
+        (np.complex64, 2e-3, 4e-3, 4e-4),
+        (np.complex128, 1e-6, 2e-7, 2e-9),
+    ],
+)
+def test_compute_vjp_matches_finite_difference_for_supported_gradient_dtypes(
+    dtype,
+    epsilon,
+    rtol,
+    atol,
+):
+    data = dense_matrix_values(9, 2, dtype=dtype)
+    assert_matrix_vjp_directional(
+        data,
+        epsilon=epsilon,
+        rtol=rtol,
+        atol=atol,
+    )
+
+
+@pytest.mark.parametrize(
+    ("dtype", "epsilon", "rtol", "atol"),
+    [
+        (np.float32, 2e-3, 3e-3, 3e-4),
+        (np.complex64, 2e-3, 4e-3, 4e-4),
+        (np.complex128, 1e-6, 2e-7, 2e-9),
+    ],
+)
+def test_compute_sc_vjp_matches_finite_difference_for_supported_gradient_dtypes(
+    dtype,
+    epsilon,
+    rtol,
+    atol,
+):
+    data = spacecurve_values(np.linspace(0.0, 1.0, 9), dtype=dtype)
+    if np.issubdtype(np.dtype(dtype), np.complexfloating):
+        imaginary = gradient_values(data.shape, dtype, (0.0, 0.0), (-0.2, 0.4))
+        data = data + imaginary
+    assert_spacecurve_vjp_directional(
+        data,
+        epsilon=epsilon,
+        rtol=rtol,
+        atol=atol,
+    )
+
+
+@pytest.mark.parametrize("matrix_backend", ["Fixed2", "Manual", "Blas"])
+def test_complex_compute_vjp_matches_finite_difference_for_each_matrix_backend(matrix_backend):
+    dim = 2 if matrix_backend == "Fixed2" else 3
+    data = dense_matrix_values(9, dim, dtype=np.complex128)
+    assert_matrix_vjp_directional(
+        data,
+        op="many",
+        matrix_backend=matrix_backend,
+        rtol=2e-7,
+        atol=2e-9,
+    )
+
+
+def test_compute_vjp_recomputation_accounts_for_nested_integrator_workspace():
+    samples = 9
+    dim = 16
+    data = np.zeros((samples, dim, dim), dtype=np.float64)
+
+    actual = magnus.compute_vjp(
+        2,
+        lambda _: data,
+        np.ones((dim, dim), dtype=np.float64),
+        0.0,
+        1.0,
+        samples,
+        matrix_backend="Manual",
+        integrator="Boole",
+    )
+
+    assert actual.shape == data.shape
+    assert np.isfinite(actual).all()
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float64, np.complex64, np.complex128])

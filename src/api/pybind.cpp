@@ -4,6 +4,7 @@
 #include <concepts>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -160,14 +161,14 @@ py::object run_typed(
 
     CArray<NumT> out(py_shape(matrix_output_shape(op, n, input_shape.dim)));
     py::buffer_info out_info = out.request();
-    const NumT* in = static_cast<const NumT*>(in_info.ptr);
+    NumT* in = static_cast<NumT*>(in_info.ptr);
     NumT* out_data = static_cast<NumT*>(out_info.ptr);
     py::array vjp = record_vjp ? vjp_array(data.dtype(), n, input_shape.samples, input_shape.dim) : py::array();
     NumT* vjp_data = record_vjp ? static_cast<NumT*>(vjp.request().ptr) : nullptr;
 
     {
         py::gil_scoped_release release;
-        run_raw(
+        run_raw_impl(
             n,
             in,
             out_data,
@@ -176,15 +177,14 @@ py::object run_typed(
             input_shape.dim,
             t0,
             tf,
-            op,
-            matrix_backend,
-            integrator,
+            Dispatch::op_from_str(op),
+            MatrixBackends::resolve(matrix_backend),
+            IntegratorBackends::resolve(integrator),
             record_vjp
         );
     }
 
     if (record_vjp) return py::make_tuple(out, vjp);
-
     return out;
 }
 
@@ -203,7 +203,7 @@ py::object run_spacecurve_typed(
 
     py::buffer_info in_info = typed.request();
     SpaceCurveInputShape input_shape = spacecurve_input_shape(n, in_info.shape);
-    const NumT* in = static_cast<const NumT*>(in_info.ptr);
+    NumT* in = static_cast<NumT*>(in_info.ptr);
 
     CArray<NumT> out(py_shape(spacecurve_output_shape(op, n)));
     py::buffer_info out_info = out.request();
@@ -213,7 +213,7 @@ py::object run_spacecurve_typed(
 
     {
         py::gil_scoped_release release;
-        run_spacecurve_raw(
+        run_spacecurve_raw_impl(
             n,
             in,
             out_data,
@@ -221,13 +221,130 @@ py::object run_spacecurve_typed(
             input_shape.samples,
             t0,
             tf,
-            op,
-            integrator,
+            Dispatch::op_from_str(op),
+            IntegratorBackends::resolve(integrator),
             record_vjp
         );
     }
 
     if (record_vjp) return py::make_tuple(out, vjp);
+    return out;
+}
+
+template <Numeric NumT>
+py::array run_vjp_typed(
+    size_t n,
+    py::array data,
+    py::array cotangent,
+    py::object vjp_data,
+    double t0,
+    double tf,
+    std::string_view op,
+    std::string_view matrix_backend,
+    std::string_view integrator
+) {
+    CArrayCoercible<NumT> typed = CArrayCoercible<NumT>::ensure(data);
+    CArrayCoercible<NumT> typed_cotangent = CArrayCoercible<NumT>::ensure(cotangent);
+    if (!typed) throw py::type_error("could not convert data to the selected numeric dtype");
+    if (!typed_cotangent) throw py::type_error("could not convert cotangent to the selected numeric dtype");
+
+    py::buffer_info in_info = typed.request();
+    py::buffer_info cotangent_info = typed_cotangent.request();
+    MatrixInputShape input_shape = matrix_input_shape(n, in_info.shape);
+    validate_matrix_output_shape(op, n, input_shape.dim, cotangent_info.shape);
+
+    std::optional<CArrayCoercible<NumT>> typed_vjp_data;
+    NumT* carry = nullptr;
+    if (!vjp_data.is_none()) {
+        typed_vjp_data.emplace(CArrayCoercible<NumT>::ensure(vjp_data));
+        if (!*typed_vjp_data) throw py::type_error("could not convert VJP data to the selected numeric dtype");
+
+        py::buffer_info vjp_info = typed_vjp_data->request();
+        validate_vjp_data_shape(n, input_shape.samples, input_shape.dim, vjp_info.shape);
+        carry = static_cast<NumT*>(vjp_info.ptr);
+    }
+
+    CArray<NumT> out({
+        static_cast<py::ssize_t>(input_shape.samples),
+        static_cast<py::ssize_t>(input_shape.dim),
+        static_cast<py::ssize_t>(input_shape.dim),
+    });
+    py::buffer_info out_info = out.request();
+
+    {
+        py::gil_scoped_release release;
+        run_vjp_raw_impl(
+            n,
+            static_cast<NumT*>(in_info.ptr),
+            static_cast<NumT*>(cotangent_info.ptr),
+            static_cast<NumT*>(out_info.ptr),
+            carry,
+            input_shape.samples,
+            input_shape.dim,
+            t0,
+            tf,
+            Dispatch::op_from_str(op),
+            MatrixBackends::resolve(matrix_backend),
+            IntegratorBackends::resolve(integrator)
+        );
+    }
+
+    return out;
+}
+
+template <Numeric NumT>
+py::array run_spacecurve_vjp_typed(
+    size_t n,
+    py::array data,
+    py::array cotangent,
+    py::object vjp_data,
+    double t0,
+    double tf,
+    std::string_view op,
+    std::string_view integrator
+) {
+    CArrayCoercible<NumT> typed = CArrayCoercible<NumT>::ensure(data);
+    CArrayCoercible<NumT> typed_cotangent = CArrayCoercible<NumT>::ensure(cotangent);
+    if (!typed) throw py::type_error("could not convert data to the selected numeric dtype");
+    if (!typed_cotangent) throw py::type_error("could not convert cotangent to the selected numeric dtype");
+
+    py::buffer_info in_info = typed.request();
+    py::buffer_info cotangent_info = typed_cotangent.request();
+    SpaceCurveInputShape input_shape = spacecurve_input_shape(n, in_info.shape);
+    validate_spacecurve_output_shape(op, n, cotangent_info.shape);
+
+    std::optional<CArrayCoercible<NumT>> typed_vjp_data;
+    NumT* carry = nullptr;
+    if (!vjp_data.is_none()) {
+        typed_vjp_data.emplace(CArrayCoercible<NumT>::ensure(vjp_data));
+        if (!*typed_vjp_data) throw py::type_error("could not convert VJP data to the selected numeric dtype");
+
+        py::buffer_info vjp_info = typed_vjp_data->request();
+        validate_vjp_data_shape(n, input_shape.samples, 2, vjp_info.shape);
+        carry = static_cast<NumT*>(vjp_info.ptr);
+    }
+
+    CArray<NumT> out({
+        static_cast<py::ssize_t>(input_shape.samples),
+        py::ssize_t{3},
+    });
+    py::buffer_info out_info = out.request();
+
+    {
+        py::gil_scoped_release release;
+        run_spacecurve_vjp_raw_impl(
+            n,
+            static_cast<NumT*>(in_info.ptr),
+            static_cast<NumT*>(cotangent_info.ptr),
+            static_cast<NumT*>(out_info.ptr),
+            carry,
+            input_shape.samples,
+            t0,
+            tf,
+            Dispatch::op_from_str(op),
+            IntegratorBackends::resolve(integrator)
+        );
+    }
 
     return out;
 }
@@ -266,6 +383,45 @@ py::object compute_sc(
     if (dtype.is(py::dtype::of<f64>())) return run_spacecurve_typed<f64>(n, data, t0, tf, op, integrator, record_vjp);
     if (dtype.is(py::dtype::of<c32>())) return run_spacecurve_typed<c32>(n, data, t0, tf, op, integrator, record_vjp);
     if (dtype.is(py::dtype::of<c64>())) return run_spacecurve_typed<c64>(n, data, t0, tf, op, integrator, record_vjp);
+    throw py::type_error("magnus only supports dtypes float32, float64, complex64, and complex128");
+}
+
+py::array compute_vjp(
+    size_t n,
+    py::array data,
+    py::array cotangent,
+    py::object vjp_data,
+    double t0,
+    double tf,
+    std::string_view op,
+    std::string_view matrix_backend,
+    std::string_view integrator
+) {
+    py::dtype dtype = data.dtype();
+
+    if (dtype.is(py::dtype::of<f32>())) return run_vjp_typed<f32>(n, data, cotangent, vjp_data, t0, tf, op, matrix_backend, integrator);
+    if (dtype.is(py::dtype::of<f64>())) return run_vjp_typed<f64>(n, data, cotangent, vjp_data, t0, tf, op, matrix_backend, integrator);
+    if (dtype.is(py::dtype::of<c32>())) return run_vjp_typed<c32>(n, data, cotangent, vjp_data, t0, tf, op, matrix_backend, integrator);
+    if (dtype.is(py::dtype::of<c64>())) return run_vjp_typed<c64>(n, data, cotangent, vjp_data, t0, tf, op, matrix_backend, integrator);
+    throw py::type_error("magnus only supports dtypes float32, float64, complex64, and complex128");
+}
+
+py::array compute_sc_vjp(
+    size_t n,
+    py::array data,
+    py::array cotangent,
+    py::object vjp_data,
+    double t0,
+    double tf,
+    std::string_view op,
+    std::string_view integrator
+) {
+    py::dtype dtype = data.dtype();
+
+    if (dtype.is(py::dtype::of<f32>())) return run_spacecurve_vjp_typed<f32>(n, data, cotangent, vjp_data, t0, tf, op, integrator);
+    if (dtype.is(py::dtype::of<f64>())) return run_spacecurve_vjp_typed<f64>(n, data, cotangent, vjp_data, t0, tf, op, integrator);
+    if (dtype.is(py::dtype::of<c32>())) return run_spacecurve_vjp_typed<c32>(n, data, cotangent, vjp_data, t0, tf, op, integrator);
+    if (dtype.is(py::dtype::of<c64>())) return run_spacecurve_vjp_typed<c64>(n, data, cotangent, vjp_data, t0, tf, op, integrator);
     throw py::type_error("magnus only supports dtypes float32, float64, complex64, and complex128");
 }
 
@@ -340,6 +496,35 @@ PYBIND11_MODULE(_core, m) {
         py::arg("integrator") = "Auto",
         py::arg("record_vjp") = false,
         "Compute a SpaceCurve Magnus operation from sampled 3-vector data."
+    );
+
+    m.def(
+        "compute_vjp",
+        &Magnus::detail::compute_vjp,
+        py::arg("n"),
+        py::arg("data"),
+        py::arg("cotangent"),
+        py::arg("vjp_data") = py::none(),
+        py::arg("t0") = 0.0,
+        py::arg("tf") = 1.0,
+        py::arg("op") = "sum",
+        py::arg("matrix_backend") = "Auto",
+        py::arg("integrator") = "Auto",
+        "Compute the VJP of a Magnus operation with respect to sampled matrix data."
+    );
+
+    m.def(
+        "compute_sc_vjp",
+        &Magnus::detail::compute_sc_vjp,
+        py::arg("n"),
+        py::arg("data"),
+        py::arg("cotangent"),
+        py::arg("vjp_data") = py::none(),
+        py::arg("t0") = 0.0,
+        py::arg("tf") = 1.0,
+        py::arg("op") = "sum",
+        py::arg("integrator") = "Auto",
+        "Compute the VJP of a SpaceCurve Magnus operation with respect to sampled vector data."
     );
 
 #ifdef MAGNUS_ENABLE_JAX_FFI

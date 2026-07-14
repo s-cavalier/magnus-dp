@@ -15,11 +15,10 @@ fi
 status=0
 for test_file in "$tests_dir"/*.py; do
     echo "Running ${test_file#$root_dir/}"
-    if ! PYTHONPATH="$root_dir" python "$test_file"; then
-        echo "FAIL ${test_file#$root_dir/}"
-        status=1
+    if [[ "$(basename "$test_file")" == test_*.py ]]; then
+        PYTHONPATH="$root_dir" python -m pytest "$test_file" "$@" || status=1
     else
-        echo "OK ${test_file#$root_dir/}"
+        PYTHONPATH="$root_dir" python "$test_file" || status=1
     fi
 done
 

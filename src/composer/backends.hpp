@@ -19,6 +19,7 @@ namespace Magnus {
     void initialize_default_gl_table();
 
     std::unique_ptr<KernelPlan> make_plan(Params& p, size_t num_idx, size_t mat_idx, size_t int_idx, bool vjp_record, Dispatch::KernelOp op);
+    std::unique_ptr<KernelPlan> make_vjp_plan(VJPParams& p, size_t num_idx, size_t mat_idx, size_t int_idx, Dispatch::KernelOp op);
 
     namespace detail {
 
@@ -99,6 +100,10 @@ namespace Magnus {
             return spacecurve_output_shape(Dispatch::op_from_str(op), n);
         }
 
+        inline std::vector<size_t> vjp_data_shape(size_t n, size_t samples, size_t dim) {
+            return {gl_max_n(n), total_orders(n), samples, dim, dim};
+        }
+
         template <class Shape>
         inline MatrixInputShape matrix_input_shape(size_t n, const Shape& shape) {
             if (n == 0) throw std::invalid_argument("n must be at least 1");
@@ -163,13 +168,18 @@ namespace Magnus {
             validate_spacecurve_output_shape(Dispatch::op_from_str(op), n, actual);
         }
 
+        template <class Shape>
+        inline void validate_vjp_data_shape(size_t n, size_t samples, size_t dim, const Shape& actual) {
+            validate_shape(actual, vjp_data_shape(n, samples, dim), "VJP data has an invalid shape");
+        }
+
         inline void validate_raw_buffers(const void* in, const void* out) {
             if (in == nullptr) throw std::invalid_argument("input buffer must not be null");
             if (out == nullptr) throw std::invalid_argument("output buffer must not be null");
         }
 
         template <Numeric NumT>
-        void run_raw_mutable(
+        void run_raw_impl(
             size_t n,
             NumT* in,
             NumT* out,
@@ -183,12 +193,8 @@ namespace Magnus {
             size_t int_idx,
             bool record_vjp
         ) {
-            validate_raw_buffers(in, out);
-            matrix_input_shape(n, std::array<size_t, 3>{samples, dim, dim});
-            initialize_default_gl_table();
-
             Params params{
-                Params::num_data<NumT>{in, out, vjp_data},
+                DefaultData<NumT>{in, out, vjp_data},
                 n,
                 dim,
                 samples,
@@ -200,6 +206,136 @@ namespace Magnus {
 
             std::unique_ptr<KernelPlan> plan = make_plan(params, num_idx, mat_idx, int_idx, record_vjp, op);
             plan->run();
+        }
+
+        template <Numeric NumT>
+        void run_vjp_raw_impl(
+            size_t n,
+            NumT* in,
+            NumT* cotangent,
+            NumT* out,
+            NumT* carry,
+            size_t samples,
+            size_t dim,
+            double t0,
+            double tf,
+            Dispatch::KernelOp op,
+            size_t mat_idx,
+            size_t int_idx
+        ) {
+            VJPParams params{
+                VJPData<NumT>{in, cotangent, out, carry},
+                n,
+                dim,
+                samples,
+                t0,
+                tf
+            };
+
+            size_t num_idx = NumBackends::resolve(type_name_v<NumT>);
+
+            std::unique_ptr<KernelPlan> plan = make_vjp_plan(params, num_idx, mat_idx, int_idx, op);
+            plan->run();
+        }
+
+        template <Numeric NumT>
+        void run_spacecurve_raw_impl(
+            size_t n,
+            const NumT* in,
+            NumT* out,
+            NumT* vjp_data,
+            size_t samples,
+            double t0,
+            double tf,
+            Dispatch::KernelOp op,
+            size_t int_idx,
+            bool record_vjp
+        ) {
+            size_t result_count = output_count(op, n);
+            std::vector<NumT> padded(samples * 4);
+            std::vector<NumT> padded_out(result_count * 4);
+
+            for (size_t i = 0; i < samples; ++i) {
+                padded[4 * i] = NumT{0};
+                padded[4 * i + 1] = in[3 * i];
+                padded[4 * i + 2] = in[3 * i + 1];
+                padded[4 * i + 3] = in[3 * i + 2];
+            }
+
+            run_raw_impl(
+                n,
+                padded.data(),
+                padded_out.data(),
+                vjp_data,
+                samples,
+                2,
+                t0,
+                tf,
+                op,
+                MatrixBackends::resolve("SpaceCurve"),
+                int_idx,
+                record_vjp
+            );
+
+            for (size_t i = 0; i < result_count; ++i) {
+                out[3 * i] = padded_out[4 * i + 1];
+                out[3 * i + 1] = padded_out[4 * i + 2];
+                out[3 * i + 2] = padded_out[4 * i + 3];
+            }
+        }
+
+        template <Numeric NumT>
+        void run_spacecurve_vjp_raw_impl(
+            size_t n,
+            NumT* in,
+            NumT* cotangent,
+            NumT* out,
+            NumT* carry,
+            size_t samples,
+            double t0,
+            double tf,
+            Dispatch::KernelOp op,
+            size_t int_idx
+        ) {
+            size_t result_count = output_count(op, n);
+            std::vector<NumT> padded_in(samples * 4);
+            std::vector<NumT> padded_cotangent(result_count * 4);
+            std::vector<NumT> padded_out(samples * 4);
+
+            for (size_t i = 0; i < samples; ++i) {
+                padded_in[4 * i] = NumT{0};
+                padded_in[4 * i + 1] = in[3 * i];
+                padded_in[4 * i + 2] = in[3 * i + 1];
+                padded_in[4 * i + 3] = in[3 * i + 2];
+            }
+
+            for (size_t i = 0; i < result_count; ++i) {
+                padded_cotangent[4 * i] = NumT{0};
+                padded_cotangent[4 * i + 1] = cotangent[3 * i];
+                padded_cotangent[4 * i + 2] = cotangent[3 * i + 1];
+                padded_cotangent[4 * i + 3] = cotangent[3 * i + 2];
+            }
+
+            run_vjp_raw_impl(
+                n,
+                padded_in.data(),
+                padded_cotangent.data(),
+                padded_out.data(),
+                carry,
+                samples,
+                2,
+                t0,
+                tf,
+                op,
+                MatrixBackends::resolve("SpaceCurve"),
+                int_idx
+            );
+
+            for (size_t i = 0; i < samples; ++i) {
+                out[3 * i] = padded_out[4 * i + 1];
+                out[3 * i + 1] = padded_out[4 * i + 2];
+                out[3 * i + 2] = padded_out[4 * i + 3];
+            }
         }
 
     }
@@ -220,13 +356,14 @@ namespace Magnus {
         bool record_vjp = false
     ) {
         detail::validate_raw_buffers(in, out);
+        if (record_vjp && vjp_data == nullptr) throw std::invalid_argument("record_vjp requires a carry buffer");
         detail::matrix_input_shape(n, std::array<size_t, 3>{samples, dim, dim});
 
         size_t entry_count = detail::checked_matrix_entry_count(samples, dim);
         std::vector<NumT> input_copy(entry_count);
         std::copy_n(in, entry_count, input_copy.data());
 
-        detail::run_raw_mutable(
+        detail::run_raw_impl(
             n,
             input_copy.data(),
             out,
@@ -239,6 +376,72 @@ namespace Magnus {
             mat_idx,
             int_idx,
             record_vjp
+        );
+    }
+
+    template <Numeric NumT>
+    void run_vjp_raw(
+        size_t n,
+        NumT* in,
+        NumT* cotangent,
+        NumT* out,
+        NumT* carry,
+        size_t samples,
+        size_t dim,
+        double t0,
+        double tf,
+        Dispatch::KernelOp op,
+        size_t mat_idx,
+        size_t int_idx
+    ) {
+        detail::validate_raw_buffers(in, out);
+        if (cotangent == nullptr) throw std::invalid_argument("cotangent buffer must not be null");
+        detail::matrix_input_shape(n, std::array<size_t, 3>{samples, dim, dim});
+
+        detail::run_vjp_raw_impl(
+            n,
+            in,
+            cotangent,
+            out,
+            carry,
+            samples,
+            dim,
+            t0,
+            tf,
+            op,
+            mat_idx,
+            int_idx
+        );
+    }
+
+    template <Numeric NumT>
+    void run_vjp_raw(
+        size_t n,
+        NumT* in,
+        NumT* cotangent,
+        NumT* out,
+        NumT* carry,
+        size_t samples,
+        size_t dim,
+        double t0,
+        double tf,
+        std::string_view op,
+        std::string_view matrix_backend,
+        std::string_view integrator
+    ) {
+        run_vjp_raw(
+            n,
+            in,
+            cotangent,
+            out,
+            carry,
+            samples,
+            dim,
+            t0,
+            tf,
+            Dispatch::op_from_str(op),
+            MatrixBackends::resolve(matrix_backend),
+            IntegratorBackends::resolve(integrator)
         );
     }
 
@@ -317,40 +520,21 @@ namespace Magnus {
         bool record_vjp = false
     ) {
         detail::validate_raw_buffers(in, out);
+        if (record_vjp && vjp_data == nullptr) throw std::invalid_argument("record_vjp requires a carry buffer");
         detail::spacecurve_input_shape(n, std::array<size_t, 2>{samples, 3});
 
-        size_t result_count = detail::output_count(op, n);
-        if (result_count > std::numeric_limits<size_t>::max() / 4) throw std::invalid_argument("output shape is too large");
-
-        std::vector<NumT> padded(samples * 4);
-        for (size_t i = 0; i < samples; ++i) {
-            padded[4 * i] = NumT{0};
-            padded[4 * i + 1] = in[3 * i];
-            padded[4 * i + 2] = in[3 * i + 1];
-            padded[4 * i + 3] = in[3 * i + 2];
-        }
-
-        std::vector<NumT> padded_out(result_count * 4);
-        detail::run_raw_mutable(
+        detail::run_spacecurve_raw_impl(
             n,
-            padded.data(),
-            padded_out.data(),
+            in,
+            out,
             vjp_data,
             samples,
-            2,
             t0,
             tf,
             op,
-            MatrixBackends::resolve("SpaceCurve"),
             int_idx,
             record_vjp
         );
-
-        for (size_t i = 0; i < result_count; ++i) {
-            out[3 * i] = padded_out[4 * i + 1];
-            out[3 * i + 1] = padded_out[4 * i + 2];
-            out[3 * i + 2] = padded_out[4 * i + 3];
-        }
     }
 
     template <Numeric NumT>
@@ -376,6 +560,64 @@ namespace Magnus {
             Dispatch::op_from_str(op),
             IntegratorBackends::resolve(integrator),
             record_vjp
+        );
+    }
+
+    template <Numeric NumT>
+    void run_spacecurve_vjp_raw(
+        size_t n,
+        NumT* in,
+        NumT* cotangent,
+        NumT* out,
+        NumT* carry,
+        size_t samples,
+        double t0,
+        double tf,
+        Dispatch::KernelOp op,
+        size_t int_idx
+    ) {
+        detail::validate_raw_buffers(in, out);
+        if (cotangent == nullptr) throw std::invalid_argument("cotangent buffer must not be null");
+        detail::spacecurve_input_shape(n, std::array<size_t, 2>{samples, 3});
+
+        detail::run_spacecurve_vjp_raw_impl(
+            n,
+            in,
+            cotangent,
+            out,
+            carry,
+            samples,
+            t0,
+            tf,
+            op,
+            int_idx
+        );
+    }
+
+    template <Numeric NumT>
+    void run_spacecurve_vjp_raw(
+        size_t n,
+        NumT* in,
+        NumT* cotangent,
+        NumT* out,
+        NumT* carry,
+        size_t samples,
+        double t0,
+        double tf,
+        std::string_view op,
+        std::string_view integrator
+    ) {
+        run_spacecurve_vjp_raw(
+            n,
+            in,
+            cotangent,
+            out,
+            carry,
+            samples,
+            t0,
+            tf,
+            Dispatch::op_from_str(op),
+            IntegratorBackends::resolve(integrator)
         );
     }
 

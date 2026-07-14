@@ -17,8 +17,8 @@ namespace Magnus {
 
         static consteval std::string_view dispatch_name() { return "Riemann"; }
 
-        static bool valid( [[maybe_unused]] const Params& ) { return true; }
-        static bool use( [[maybe_unused]] const Params& ) { return true; }
+        static bool valid( [[maybe_unused]] const ParamsBase& ) { return true; }
+        static bool use( [[maybe_unused]] const ParamsBase& ) { return true; }
     };
 
     struct TrapezoidBackend {
@@ -27,8 +27,8 @@ namespace Magnus {
 
         static consteval std::string_view dispatch_name() { return "Trapezoid"; }
 
-        static bool valid( [[maybe_unused]] const Params& ) { return true; }
-        static bool use( [[maybe_unused]] const Params& ) { return true; }
+        static bool valid( [[maybe_unused]] const ParamsBase& ) { return true; }
+        static bool use( [[maybe_unused]] const ParamsBase& ) { return true; }
     };
 
     struct SimpsonBackend {
@@ -37,8 +37,8 @@ namespace Magnus {
 
         static consteval std::string_view dispatch_name() { return "Simpson"; }
 
-        static bool valid( [[maybe_unused]] const Params& ) { return true; }
-        static bool use( [[maybe_unused]] const Params& ) { return true; }
+        static bool valid( [[maybe_unused]] const ParamsBase& ) { return true; }
+        static bool use( [[maybe_unused]] const ParamsBase& ) { return true; }
     };
 
     struct BooleBackend {
@@ -47,8 +47,8 @@ namespace Magnus {
 
         static consteval std::string_view dispatch_name() { return "Boole"; }
 
-        static bool valid( [[maybe_unused]] const Params& ) { return true; }
-        static bool use( [[maybe_unused]] const Params& ) { return true; }
+        static bool valid( [[maybe_unused]] const ParamsBase& ) { return true; }
+        static bool use( [[maybe_unused]] const ParamsBase& ) { return true; }
     };
 
     using IntegratorBackends = type_list<
