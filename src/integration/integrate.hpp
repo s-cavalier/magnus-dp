@@ -1,6 +1,6 @@
 #ifndef __INTEGRATE_HPP__
 #define __INTEGRATE_HPP__
-#include "matrix.hpp"
+#include "linalg/matrix.hpp"
 
 namespace Magnus {
 
@@ -26,6 +26,9 @@ namespace Magnus {
         { T( size_t{}, alloc ) };
         { integrator.prefix( data, double{} ) } -> std::same_as<void>;
         { integrator.sum( data, out, double{} ) } -> std::same_as<void>;
+        { integrator.prefix_vjp( data, double{} ) } -> std::same_as<void>;
+        { integrator.sum_vjp( data, out, double{} ) } -> std::same_as<void>;
+        { integrator.sum_vjp_add( data, out, double{} ) } -> std::same_as<void>;
         { integrator.borrow_scratch() } -> std::same_as< MatrixView<typename T::numeric_t, typename T::matrix_policy_t> >;
     };
 

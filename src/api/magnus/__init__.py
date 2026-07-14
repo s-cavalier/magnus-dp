@@ -1,16 +1,23 @@
+from __future__ import annotations
+
 import operator
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 import numpy as np
 
 from ._core import _replace_gl_table
 from ._core import compute as _compute_sampled
 from ._core import compute_sc as _compute_sc_sampled
+from ._core import compute_sc_vjp as _compute_sc_vjp_sampled
+from ._core import compute_vjp as _compute_vjp_sampled
 from ._core import integrators
 from ._core import matrix_backends
 from ._core import max_order
 from ._core import numeric_backends
 from ._core import ops
+
+if TYPE_CHECKING:
+    from ._generated_typing import IntegratorName, KernelOpName, MatrixBackendName
 
 __all__ = [
     "max_order",
@@ -21,6 +28,8 @@ __all__ = [
     "replace_gl_table",
     "compute",
     "compute_sc",
+    "compute_vjp",
+    "compute_sc_vjp",
 ]
 
 
@@ -81,12 +90,14 @@ def compute(
     tf: float,
     samples: int,
     *,
-    op: str = "sum",
+    op: KernelOpName = "sum",
     dtype=None,
     vectorized: bool = True,
-    matrix_backend: str = "Auto",
-    integrator: str = "Auto",
-) -> np.ndarray:
+    matrix_backend: MatrixBackendName = "Auto",
+    integrator: IntegratorName = "Auto",
+    record_vjp: bool = False,
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+    """Return the Magnus output and, when requested, its saved forward carry."""
     data = _sample_callable(
         f,
         t0,
@@ -103,6 +114,7 @@ def compute(
         op=op,
         matrix_backend=matrix_backend,
         integrator=integrator,
+        record_vjp=record_vjp,
     )
 
 
@@ -113,11 +125,13 @@ def compute_sc(
     tf: float,
     samples: int,
     *,
-    op: str = "sum",
+    op: KernelOpName = "sum",
     dtype=None,
     vectorized: bool = True,
-    integrator: str = "Auto",
-) -> np.ndarray:
+    integrator: IntegratorName = "Auto",
+    record_vjp: bool = False,
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+    """Return the SpaceCurve Magnus output and, when requested, its saved forward carry."""
     data = _sample_spacecurve_callable(
         f,
         t0,
@@ -131,6 +145,79 @@ def compute_sc(
         data,
         t0,
         tf,
+        op=op,
+        integrator=integrator,
+        record_vjp=record_vjp,
+    )
+
+
+def compute_vjp(
+    n: int,
+    f: Callable,
+    cotangent,
+    t0: float,
+    tf: float,
+    samples: int,
+    *,
+    op: KernelOpName = "sum",
+    dtype=None,
+    vectorized: bool = True,
+    matrix_backend: MatrixBackendName = "Auto",
+    integrator: IntegratorName = "Auto",
+    vjp_data=None,
+) -> np.ndarray:
+    data = _sample_callable(
+        f,
+        t0,
+        tf,
+        samples,
+        dtype=dtype,
+        vectorized=vectorized,
+    )
+    cotangent = np.ascontiguousarray(np.asarray(cotangent, dtype=data.dtype))
+    return _compute_vjp_sampled(
+        n,
+        data,
+        cotangent,
+        vjp_data=vjp_data,
+        t0=t0,
+        tf=tf,
+        op=op,
+        matrix_backend=matrix_backend,
+        integrator=integrator,
+    )
+
+
+def compute_sc_vjp(
+    n: int,
+    f: Callable,
+    cotangent,
+    t0: float,
+    tf: float,
+    samples: int,
+    *,
+    op: KernelOpName = "sum",
+    dtype=None,
+    vectorized: bool = True,
+    integrator: IntegratorName = "Auto",
+    vjp_data=None,
+) -> np.ndarray:
+    data = _sample_spacecurve_callable(
+        f,
+        t0,
+        tf,
+        samples,
+        dtype=dtype,
+        vectorized=vectorized,
+    )
+    cotangent = np.ascontiguousarray(np.asarray(cotangent, dtype=data.dtype))
+    return _compute_sc_vjp_sampled(
+        n,
+        data,
+        cotangent,
+        vjp_data=vjp_data,
+        t0=t0,
+        tf=tf,
         op=op,
         integrator=integrator,
     )
