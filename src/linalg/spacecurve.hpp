@@ -12,9 +12,9 @@ namespace Magnus::SpaceCurve {
         NumT* MAGNUS_RESTRICT c
     ) {
         c[0] = a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
-        c[1] = b[0] * a[1] + a[2] * b[3] - a[3] * b[2];
-        c[2] = b[0] * a[2] + a[3] * b[1] - a[1] * b[3];
-        c[3] = b[0] * a[3] + a[1] * b[2] - a[2] * b[1];
+        c[1] = -b[0] * a[1] + a[2] * b[3] - a[3] * b[2];
+        c[2] = -b[0] * a[2] + a[3] * b[1] - a[1] * b[3];
+        c[3] = -b[0] * a[3] + a[1] * b[2] - a[2] * b[1];
     }
 
     template <class NumT>
@@ -31,11 +31,11 @@ namespace Magnus::SpaceCurve {
         NumT b2 = b[2];
         NumT b3 = b[3];
 
-        da[1] += dout[0] * b1 + dout[1] * b0 - dout[2] * b3 + dout[3] * b2;
-        da[2] += dout[0] * b2 + dout[1] * b3 + dout[2] * b0 - dout[3] * b1;
-        da[3] += dout[0] * b3 - dout[1] * b2 + dout[2] * b1 + dout[3] * b0;
+        da[1] += dout[0] * b1 - dout[1] * b0 - dout[2] * b3 + dout[3] * b2;
+        da[2] += dout[0] * b2 + dout[1] * b3 - dout[2] * b0 - dout[3] * b1;
+        da[3] += dout[0] * b3 - dout[1] * b2 + dout[2] * b1 - dout[3] * b0;
 
-        db[0] = dout[1] * a[1] + dout[2] * a[2] + dout[3] * a[3];
+        db[0] = -dout[1] * a[1] - dout[2] * a[2] - dout[3] * a[3];
         db[1] = dout[0] * a[1] + dout[2] * a[3] - dout[3] * a[2];
         db[2] = dout[0] * a[2] - dout[1] * a[3] + dout[3] * a[1];
         db[3] = dout[0] * a[3] + dout[1] * a[2] - dout[2] * a[1];
@@ -122,9 +122,9 @@ namespace Magnus::SpaceCurve {
             NumT b3 = y[3] + total[3] * x;
 
             y[0] = a[1] * b1 + a[2] * b2 + a[3] * b3;
-            y[1] = b0 * a[1] + a[2] * b3 - a[3] * b2;
-            y[2] = b0 * a[2] + a[3] * b1 - a[1] * b3;
-            y[3] = b0 * a[3] + a[1] * b2 - a[2] * b1;
+            y[1] = -b0 * a[1] + a[2] * b3 - a[3] * b2;
+            y[2] = -b0 * a[2] + a[3] * b1 - a[1] * b3;
+            y[3] = -b0 * a[3] + a[1] * b2 - a[2] * b1;
         }
     }
 
@@ -159,11 +159,11 @@ namespace Magnus::SpaceCurve {
             NumT g2 = g[2];
             NumT g3 = g[3];
 
-            da[1] += g0 * b1 + g1 * b0 - g2 * b3 + g3 * b2;
-            da[2] += g0 * b2 + g1 * b3 + g2 * b0 - g3 * b1;
-            da[3] += g0 * b3 - g1 * b2 + g2 * b1 + g3 * b0;
+            da[1] += g0 * b1 - g1 * b0 - g2 * b3 + g3 * b2;
+            da[2] += g0 * b2 + g1 * b3 - g2 * b0 - g3 * b1;
+            da[3] += g0 * b3 - g1 * b2 + g2 * b1 - g3 * b0;
 
-            temp[0] = g1 * a[1] + g2 * a[2] + g3 * a[3];
+            temp[0] = -g1 * a[1] - g2 * a[2] - g3 * a[3];
             temp[1] = g0 * a[1] + g2 * a[3] - g3 * a[2];
             temp[2] = g0 * a[2] - g1 * a[3] + g3 * a[1];
             temp[3] = g0 * a[3] + g1 * a[2] - g2 * a[1];
