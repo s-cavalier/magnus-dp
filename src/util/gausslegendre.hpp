@@ -8,6 +8,7 @@
 #include <atomic>
 #include <concepts>
 #include <algorithm>
+#include <functional>
 #include <vector>
 
 namespace Magnus {
@@ -88,6 +89,19 @@ namespace Magnus {
         );
 
         DataView get_order(size_t n) const override;
+    };
+
+    struct GL_forloop {
+        static void invoke(size_t order, auto&& fn) {
+            for (size_t q = 0; q < order; ++q) std::invoke(fn, q);
+        }
+    };
+
+    struct GL_openmp {
+        static void invoke(size_t order, auto&& fn) {
+            #pragma omp parallel for schedule(static)
+            for (size_t q = 0; q < order; ++q) std::invoke(fn, q);
+        }
     };
 
 }

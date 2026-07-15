@@ -413,12 +413,14 @@ namespace Dispatch {
     class TypedKernelPlan final : public KernelPlan {
         Params p;
         kernel_dispatch_t<typename Int::allocator_t> kernel_ptr;
+        size_t memory_count;
     
     public:
         explicit TypedKernelPlan(
             Params params, 
-            kernel_dispatch_t<typename Int::allocator_t> kernel_ptr
-        ) : p( std::move(params) ), kernel_ptr(kernel_ptr) {}
+            kernel_dispatch_t<typename Int::allocator_t> kernel_ptr,
+            size_t memory_count
+        ) : p( std::move(params) ), kernel_ptr(kernel_ptr), memory_count(memory_count) {}
 
         size_t divisibility_requirement() const override {
             return Int::divisibility_requirement();
@@ -439,7 +441,7 @@ namespace Dispatch {
         void run() override {
             using NumT = typename Int::numeric_t;
 
-            MemoryBuffer memory( required_bytes(p) );
+            MemoryBuffer memory(memory_count);
             auto alloc = memory.get_allocator<NumT>();
 
             kernel_ptr(p, alloc);

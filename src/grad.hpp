@@ -4,13 +4,14 @@
 #include "magnus.hpp"
 #include "integration/integrate.hpp"
 #include "util/extra.hpp"
+#include "util/gausslegendre.hpp"
 #include <optional>
 
 namespace Magnus::VJP {
 
     // Special magnus.hpp-style kernel for just getting intermediate, VJP data.
     // we don't save any fwd values, hence the name `none`. But, we do store vjp_data.
-    template <Integrator Int>
+    template <Integrator Int, class GLIntegrator = GL_forloop>
     void none(
         size_t n,
         typename Int::matrix_span_t& A,
@@ -43,7 +44,7 @@ namespace Magnus::VJP {
 
         MatrixViewT temp = integrator.borrow_scratch();
 
-        for ( size_t q = 0; q < view.order(); ++q ) {
+        GLIntegrator::invoke(view.order(), [&](size_t q){
             auto [ w_q, x_q ] = view[q];
             double shift = x_q - 1;
 
@@ -58,10 +59,10 @@ namespace Magnus::VJP {
                 total_copy.copy_from(total);
                 Y.sample_update(A, total_copy, shift, temp);
             }
-        }
+        });
     }
 
-    template <Integrator Int>
+    template <Integrator Int, class GLIntegrator = GL_forloop>
     void one(
         typename Int::matrix_span_t& dA,
         typename Int::matrix_t& dOut,
@@ -103,7 +104,7 @@ namespace Magnus::VJP {
             local_data.emplace(allocate_unique<NumT>(data_size, alloc));
             fwd_data_tmp.emplace(local_data->get(), n, samples, dim);
 
-            none<Int>(
+            none<Int, GLIntegrator>(
                 n,
                 A,
                 t0,
@@ -123,7 +124,7 @@ namespace Magnus::VJP {
 
         MatrixT tmp = integrator.borrow_scratch();
 
-        for (size_t q = 0; q < view.order(); ++q) {
+        GLIntegrator::invoke(view.order(), [&](size_t q){
             auto [w_q, x_q] = view[q];
 
             double shift = x_q - 1.0;
@@ -147,10 +148,10 @@ namespace Magnus::VJP {
 
             // Reverse of the initial Y.copy_from(A) at the start of this q path.
             dA.add(barY);
-        }
+        });
     }
 
-    template <Integrator Int>
+    template <Integrator Int, class GLIntegrator = GL_forloop>
     void many(
         typename Int::matrix_span_t& dA,
         typename Int::matrix_span_t& dOut,
@@ -190,7 +191,7 @@ namespace Magnus::VJP {
             local_data.emplace(allocate_unique<NumT>(data_size, alloc));
             fwd_data_tmp.emplace(local_data->get(), n, samples, dim);
 
-            none<Int>(
+            none<Int, GLIntegrator>(
                 n,
                 A,
                 t0,
@@ -210,7 +211,7 @@ namespace Magnus::VJP {
 
         MatrixT tmp = integrator.borrow_scratch();
 
-        for (size_t q = 0; q < view.order(); ++q) {
+        GLIntegrator::invoke(view.order(), [&](size_t q){
             auto [w_q, x_q] = view[q];
 
             double shift = x_q - 1.0;
@@ -249,11 +250,10 @@ namespace Magnus::VJP {
             integrator.prefix_vjp(barY, dt);
 
             dA.add(barY);
-        }
-
+        });
     }
 
-    template <Integrator Int>
+    template <Integrator Int, class GLIntegrator = GL_forloop>
     void sum(
         typename Int::matrix_span_t& dA,
         typename Int::matrix_t& dOut,
@@ -292,7 +292,7 @@ namespace Magnus::VJP {
             local_data.emplace(allocate_unique<NumT>(data_size, alloc));
             fwd_data_tmp.emplace(local_data->get(), n, samples, dim);
 
-            none<Int>(
+            none<Int, GLIntegrator>(
                 n,
                 A,
                 t0,
@@ -312,7 +312,7 @@ namespace Magnus::VJP {
 
         MatrixT tmp = integrator.borrow_scratch();
 
-        for (size_t q = 0; q < view.order(); ++q) {
+        GLIntegrator::invoke(view.order(), [&](size_t q){
             auto [w_q, x_q] = view[q];
 
             double shift = x_q - 1.0;
@@ -349,8 +349,7 @@ namespace Magnus::VJP {
             integrator.prefix_vjp(barY, dt);
 
             dA.add(barY);
-        }
-
+        });
     }
 
 

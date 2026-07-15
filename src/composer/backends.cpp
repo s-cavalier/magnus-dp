@@ -66,13 +66,15 @@ std::unique_ptr<Magnus::KernelPlan> Magnus::make_plan(Params& p, size_t num_idx,
     const size_t kernel_idx = static_cast<size_t>(op);
 
     return dispatch_plan(p, num_idx, mat_idx, int_idx, [&]<Integrator Int>() -> std::unique_ptr<KernelPlan> {
+        const size_t memory_count = TypedKernelPlan<Int>::required_bytes(p);
+
         if (vjp_record) {
             if (kernel_idx >= kernels<Int, true>.size()) throw std::invalid_argument("invalid kernel operation");
-            return std::make_unique<TypedKernelPlan<Int>>(std::move(p), kernels<Int, true>[kernel_idx]);
+            return std::make_unique<TypedKernelPlan<Int>>(std::move(p), kernels<Int, true>[kernel_idx], memory_count);
         }
 
         if (kernel_idx >= kernels<Int, false>.size()) throw std::invalid_argument("invalid kernel operation");
-        return std::make_unique<TypedKernelPlan<Int>>(std::move(p), kernels<Int, false>[kernel_idx]);
+        return std::make_unique<TypedKernelPlan<Int>>(std::move(p), kernels<Int, false>[kernel_idx], memory_count);
     });
 }
 

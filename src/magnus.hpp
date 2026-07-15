@@ -8,7 +8,7 @@
 
 namespace Magnus {
 
-    template <Integrator Int, VJP::DataRecorder<typename Int::matrix_span_t> VJPDataT = VJP::NoData>
+    template <Integrator Int, VJP::DataRecorder<typename Int::matrix_span_t> VJPDataT, class GLIntegrator = GL_forloop>
     void one(
         typename Int::matrix_t& out,
         size_t n, 
@@ -51,7 +51,7 @@ namespace Magnus {
 
         MatrixViewT temp = integrator.borrow_scratch();
 
-        for ( size_t q = 0; q < view.order(); ++q ) {
+        GLIntegrator::invoke(view.order(), [&](size_t q){
             auto [ w_q, x_q ] = view[q];
             double shift = x_q - 1;
             double final_scale = dt * w_q;
@@ -69,11 +69,11 @@ namespace Magnus {
             }   
 
             integrator.sum(Y, out, final_scale);
-        }
+        });
 
     }
 
-    template <Integrator Int, VJP::DataRecorder<typename Int::matrix_span_t> VJPDataT = VJP::NoData>
+    template <Integrator Int, VJP::DataRecorder<typename Int::matrix_span_t> VJPDataT, class GLIntegrator = GL_forloop>
     void many(
         typename Int::matrix_span_t& out,
         typename Int::matrix_span_t& A,
@@ -115,7 +115,7 @@ namespace Magnus {
 
         MatrixViewT temp = integrator.borrow_scratch();
 
-        for ( size_t q = 0; q < view.order(); ++q ) {
+        GLIntegrator::invoke(view.order(), [&](size_t q){
             auto [ w_q, x_q ] = view[q];
             double shift = x_q - 1;
             double final_scale = dt * w_q;
@@ -134,10 +134,10 @@ namespace Magnus {
                 MatrixViewT term = out[k - 1];
                 integrator.sum(Y, term, final_scale);
             }   
-        }
+        });
     }
 
-    template <Integrator Int, VJP::DataRecorder<typename Int::matrix_span_t> VJPDataT = VJP::NoData>
+    template <Integrator Int, VJP::DataRecorder<typename Int::matrix_span_t> VJPDataT, class GLIntegrator = GL_forloop>
     void sum(
         typename Int::matrix_t& out,
         size_t n, 
@@ -178,7 +178,7 @@ namespace Magnus {
 
         MatrixViewT temp = integrator.borrow_scratch();
 
-        for ( size_t q = 0; q < view.order(); ++q ) {
+        GLIntegrator::invoke(view.order(), [&](size_t q){
             auto [ w_q, x_q ] = view[q];
             double shift = x_q - 1;
             double final_scale = dt * w_q;
@@ -196,7 +196,7 @@ namespace Magnus {
 
                 integrator.sum(Y, out, final_scale);
             }   
-        }
+        });
     }
 
 }
