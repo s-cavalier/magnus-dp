@@ -1,4 +1,4 @@
-# Software Package for Efficient Numeric Magnus Integration
+# Efficient Numerical Magnus Integration
 
 This python software package solves linear first-order differential equations using the **Magnus Expansion**:
 
@@ -130,20 +130,9 @@ def compute_sc_vjp(
 
 ---
 
-### Utility Functions
-
-- **`max_order() -> int`**: Returns the current maximum Legendre-Gauss degree available in the table.
-- **`replace_gl_table(max_order: int) -> None`**: Installs a new Gauss-Legendre table up to `max_order`.
-- **`numeric_backends() -> tuple[str, ...]`**: Lists valid data type targets (e.g. `"float32"`, `"float64"`, `"complex64"`, `"complex128"`).
-- **`matrix_backends() -> tuple[str, ...]`**: Lists available matrix backends.
-- **`integrators() -> tuple[str, ...]`**: Lists available integrator algorithms.
-- **`ops() -> tuple[str, ...]`**: Lists available accumulation operations (`"one"`, `"many"`, `"sum"`).
-
----
-
 ## JAX API Reference
 
-The `magnus.jax` module mirrors the core compute API, binding custom C++ FFI CPU targets directly to JAX's autograd engine.
+The `magnus.jax` module mirrors the core library but is compatible with JAX's autograd engine.
 
 ```python
 import magnus.jax as magnus_jax
@@ -155,9 +144,6 @@ import magnus.jax as magnus_jax
 - **`magnus_jax.compute_sc(n, f, t0, tf, samples, ...)`**
 
 *These functions register custom VJPs with JAX automatically. You can compute gradients, VJPs, and JIT-compile code involving Magnus integrations.*
-
-- **`magnus_jax.register_ffi_targets() -> None`**: Registers the C++ FFI CPU kernels inside JAX. This is automatically invoked when `magnus.jax` is imported.
-
 ---
 
 ## Code Examples
@@ -195,21 +181,6 @@ out, vjp_data = magnus.compute(
     record_vjp=True
 )
 print("Magnus Sum:\n", out)
-
-# Compute VJP using the recorded forward carry
-cotangent = np.eye(2) # cotangent matrix
-vjp_gradient = magnus.compute_vjp(
-    n_order,
-    matrix_func,
-    cotangent,
-    t0,
-    tf,
-    samples,
-    op="sum",
-    integrator="Boole",
-    vjp_data=vjp_data
-)
-print("VJP Gradient Shape:\n", vjp_gradient.shape) # (samples, 2, 2)
 ```
 
 ### 2. JAX JIT and Gradient Optimization
