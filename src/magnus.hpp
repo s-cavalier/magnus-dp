@@ -21,13 +21,12 @@ namespace Magnus {
         using NumT = typename Int::numeric_t;
         using AllocatorT = typename Int::allocator_t;
         using MatrixViewT = typename Int::matrix_t;
-        using MatrixSpanT = typename Int::matrix_span_t;
+        using DynMatrixT = DynMatrix<NumT, typename Int::matrix_policy_t, AllocatorT>;
+        using DynMatrixSpanT = DynMatrixSpan<NumT, typename Int::matrix_policy_t, AllocatorT>;
 
         // Bookkeeping stuff
         size_t mat_dim = out.dim();
-        size_t matrix_size = mat_dim * mat_dim;
         size_t sample_len = A.length();
-        size_t total_data_size = matrix_size * sample_len;
         double dt = (tf - t0) / (sample_len - 1);
 
         out.zero();
@@ -44,11 +43,8 @@ namespace Magnus {
         GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
 
         // DP buffer space
-        auto Y_data = allocate_unique<NumT>(total_data_size, alloc);
-        auto total_data = allocate_unique<NumT>(matrix_size, alloc);
-        MatrixSpanT Y( Y_data.get(), mat_dim, sample_len );
-        MatrixViewT total_copy( total_data.get(), mat_dim );
-
+        DynMatrixSpanT Y( mat_dim, sample_len, alloc );
+        DynMatrixT total_copy( mat_dim, alloc );
         MatrixViewT temp = integrator.borrow_scratch();
 
         GLIntegrator::invoke(view.order(), [&](size_t q){
@@ -85,14 +81,13 @@ namespace Magnus {
         using NumT = typename Int::numeric_t;
         using AllocatorT = typename Int::allocator_t;
         using MatrixViewT = typename Int::matrix_t;
-        using MatrixSpanT = typename Int::matrix_span_t;
+        using DynMatrixT = DynMatrix<NumT, typename Int::matrix_policy_t, AllocatorT>;
+        using DynMatrixSpanT = DynMatrixSpan<NumT, typename Int::matrix_policy_t, AllocatorT>;
 
         // Bookkeeping stuff
         size_t n = out.length();
         size_t mat_dim = A.mat_dim();
-        size_t matrix_size = mat_dim * mat_dim;
         size_t sample_len = A.length();
-        size_t total_data_size = matrix_size * sample_len;
         double dt = (tf - t0) / (sample_len - 1);
         
         std::fill_n( out.data(), out.size(), NumT(0) );
@@ -108,10 +103,8 @@ namespace Magnus {
         GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
 
         // DP buffer space
-        auto Y_data = allocate_unique<NumT>(total_data_size, alloc);
-        auto total_data = allocate_unique<NumT>(matrix_size, alloc);
-        MatrixSpanT Y( Y_data.get(), mat_dim, sample_len );
-        MatrixViewT total_copy( total_data.get(), mat_dim );
+        DynMatrixSpanT Y( mat_dim, sample_len, alloc );
+        DynMatrixT total_copy( mat_dim, alloc );
 
         MatrixViewT temp = integrator.borrow_scratch();
 
@@ -150,13 +143,12 @@ namespace Magnus {
         using NumT = typename Int::numeric_t;
         using AllocatorT = typename Int::allocator_t;
         using MatrixViewT = typename Int::matrix_t;
-        using MatrixSpanT = typename Int::matrix_span_t;
+        using DynMatrixT = DynMatrix<NumT, typename Int::matrix_policy_t, AllocatorT>;
+        using DynMatrixSpanT = DynMatrixSpan<NumT, typename Int::matrix_policy_t, AllocatorT>;
 
         // Bookkeeping stuff
         size_t mat_dim = out.dim();
-        size_t matrix_size = mat_dim * mat_dim;
         size_t sample_len = A.length();
-        size_t total_data_size = matrix_size * sample_len;
         double dt = (tf - t0) / (sample_len - 1);
 
         out.zero();
@@ -171,10 +163,8 @@ namespace Magnus {
         GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
 
         // DP buffer space
-        auto Y_data = allocate_unique<NumT>(total_data_size, alloc);
-        auto total_data = allocate_unique<NumT>(matrix_size, alloc);
-        MatrixSpanT Y( Y_data.get(), mat_dim, sample_len );
-        MatrixViewT total_copy( total_data.get(), mat_dim );
+        DynMatrixSpanT Y( mat_dim, sample_len, alloc );
+        DynMatrixT total_copy( mat_dim, alloc );
 
         MatrixViewT temp = integrator.borrow_scratch();
 

@@ -21,13 +21,13 @@ namespace Magnus::VJP {
     ) {
         using namespace Magnus;
         using NumT = typename Int::numeric_t;
+        using AllocatorT = typename Int::allocator_t;
         using MatrixViewT = typename Int::matrix_t;
-        using MatrixSpanT = typename Int::matrix_span_t;
+        using DynMatrixT = DynMatrix<NumT, typename Int::matrix_policy_t, AllocatorT>;
+        using DynMatrixSpanT = DynMatrixSpan<NumT, typename Int::matrix_policy_t, AllocatorT>;
 
         size_t mat_dim = A.mat_dim();
-        size_t matrix_size = mat_dim * mat_dim;
         size_t sample_len = A.length();
-        size_t total_data_size = matrix_size * sample_len;
         double dt = (tf - t0) / (sample_len - 1);
 
         Int integrator( mat_dim, alloc );
@@ -37,10 +37,8 @@ namespace Magnus::VJP {
         auto gl_table = GLTable::get();
         GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
 
-        auto Y_data = allocate_unique<NumT>(total_data_size, alloc);
-        auto total_data = allocate_unique<NumT>(matrix_size, alloc);
-        MatrixSpanT Y( Y_data.get(), mat_dim, sample_len );
-        MatrixViewT total_copy( total_data.get(), mat_dim );
+        DynMatrixSpanT Y( mat_dim, sample_len, alloc );
+        DynMatrixT total_copy( mat_dim, alloc );
 
         MatrixViewT temp = integrator.borrow_scratch();
 
@@ -74,9 +72,11 @@ namespace Magnus::VJP {
         const typename Int::allocator_t& alloc = typename Int::allocator_t()
     ) {
         using NumT = typename Int::numeric_t;
+        using AllocatorT = typename Int::allocator_t;
         using MatrixT = typename Int::matrix_t;
         using SpanT = typename Int::matrix_span_t;
         using MatPolicyT = typename Int::matrix_policy_t;
+        using DynMatrixSpanT = DynMatrixSpan<NumT, MatPolicyT, AllocatorT>;
         using DataOwnerT = decltype(allocate_unique<NumT>(size_t{}, alloc));
         
         size_t dim = A.mat_dim();
@@ -119,8 +119,7 @@ namespace Magnus::VJP {
         auto gl_table = GLTable::get();
         GLTable::DataView view = gl_table->get_order((n + 3) / 2);
 
-        auto barY_data = allocate_unique<NumT>(span_size, alloc);
-        SpanT barY(barY_data.get(), dim, samples);
+        DynMatrixSpanT barY(dim, samples, alloc);
 
         MatrixT tmp = integrator.borrow_scratch();
 
@@ -162,9 +161,11 @@ namespace Magnus::VJP {
         const typename Int::allocator_t& alloc = typename Int::allocator_t()
     ) {
         using NumT = typename Int::numeric_t;
+        using AllocatorT = typename Int::allocator_t;
         using MatrixT = typename Int::matrix_t;
         using SpanT = typename Int::matrix_span_t;
         using MatPolicyT = typename Int::matrix_policy_t;
+        using DynMatrixSpanT = DynMatrixSpan<NumT, MatPolicyT, AllocatorT>;
         using DataOwnerT = decltype(allocate_unique<NumT>(size_t{}, alloc));
 
         size_t n = dOut.length();
@@ -206,8 +207,7 @@ namespace Magnus::VJP {
         auto gl_table = GLTable::get();
         GLTable::DataView view = gl_table->get_order((n + 3) / 2);
 
-        auto barY_data = allocate_unique<NumT>(span_size, alloc);
-        SpanT barY(barY_data.get(), dim, samples);
+        DynMatrixSpanT barY(dim, samples, alloc);
 
         MatrixT tmp = integrator.borrow_scratch();
 
@@ -265,9 +265,11 @@ namespace Magnus::VJP {
         const typename Int::allocator_t& alloc = typename Int::allocator_t()
     ) {
         using NumT = typename Int::numeric_t;
+        using AllocatorT = typename Int::allocator_t;
         using MatrixT = typename Int::matrix_t;
         using SpanT = typename Int::matrix_span_t;
         using MatPolicyT = typename Int::matrix_policy_t;
+        using DynMatrixSpanT = DynMatrixSpan<NumT, MatPolicyT, AllocatorT>;
         using DataOwnerT = decltype(allocate_unique<NumT>(size_t{}, alloc));
 
         size_t dim = A.mat_dim();
@@ -307,8 +309,7 @@ namespace Magnus::VJP {
         auto gl_table = GLTable::get();
         GLTable::DataView view = gl_table->get_order((n + 3) / 2);
 
-        auto barY_data = allocate_unique<NumT>(span_size, alloc);
-        SpanT barY(barY_data.get(), dim, samples);
+        DynMatrixSpanT barY(dim, samples, alloc);
 
         MatrixT tmp = integrator.borrow_scratch();
 
