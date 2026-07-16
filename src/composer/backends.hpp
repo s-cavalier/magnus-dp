@@ -191,7 +191,8 @@ namespace Magnus {
             Dispatch::KernelOp op,
             size_t mat_idx,
             size_t int_idx,
-            bool record_vjp
+            bool record_vjp,
+            const api_erased_allocator_t& alloc = api_erased_allocator_t()
         ) {
             Params params{
                 DefaultData<NumT>{in, out, vjp_data},
@@ -205,7 +206,7 @@ namespace Magnus {
             size_t num_idx = NumBackends::resolve(type_name_v<NumT>);
 
             std::unique_ptr<KernelPlan> plan = make_plan(params, num_idx, mat_idx, int_idx, record_vjp, op);
-            plan->run();
+            plan->run(alloc);
         }
 
         template <Numeric NumT>
@@ -221,7 +222,8 @@ namespace Magnus {
             double tf,
             Dispatch::KernelOp op,
             size_t mat_idx,
-            size_t int_idx
+            size_t int_idx,
+            const api_erased_allocator_t& alloc = api_erased_allocator_t()
         ) {
             VJPParams params{
                 VJPData<NumT>{in, cotangent, out, carry},
@@ -235,7 +237,7 @@ namespace Magnus {
             size_t num_idx = NumBackends::resolve(type_name_v<NumT>);
 
             std::unique_ptr<KernelPlan> plan = make_vjp_plan(params, num_idx, mat_idx, int_idx, op);
-            plan->run();
+            plan->run(alloc);
         }
 
         template <Numeric NumT>
@@ -249,7 +251,8 @@ namespace Magnus {
             double tf,
             Dispatch::KernelOp op,
             size_t int_idx,
-            bool record_vjp
+            bool record_vjp,
+            const api_erased_allocator_t& alloc = api_erased_allocator_t()
         ) {
             size_t result_count = output_count(op, n);
             std::vector<NumT> padded(samples * 4);
@@ -274,7 +277,8 @@ namespace Magnus {
                 op,
                 MatrixBackends::resolve("SpaceCurve"),
                 int_idx,
-                record_vjp
+                record_vjp,
+                alloc
             );
 
             for (size_t i = 0; i < result_count; ++i) {
@@ -295,7 +299,8 @@ namespace Magnus {
             double t0,
             double tf,
             Dispatch::KernelOp op,
-            size_t int_idx
+            size_t int_idx,
+            const api_erased_allocator_t& alloc = api_erased_allocator_t()
         ) {
             size_t result_count = output_count(op, n);
             std::vector<NumT> padded_in(samples * 4);
@@ -328,7 +333,8 @@ namespace Magnus {
                 tf,
                 op,
                 MatrixBackends::resolve("SpaceCurve"),
-                int_idx
+                int_idx,
+                alloc
             );
 
             for (size_t i = 0; i < samples; ++i) {
