@@ -10,6 +10,9 @@
 #include <algorithm>
 #include <functional>
 #include <vector>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 namespace Magnus {
 
@@ -92,16 +95,35 @@ namespace Magnus {
     };
 
     struct GL_forloop {
+        static constexpr size_t lane_count([[maybe_unused]]size_t) { return 1; }
+
         static void invoke(size_t order, auto&& fn) {
-            for (size_t q = 0; q < order; ++q) std::invoke(fn, q);
+            for (size_t q = 0; q < order; ++q) std::invoke(fn, q, 0);
         }
+
     };
 
     struct GL_openmp {
-        static void invoke(size_t order, auto&& fn) {
-            #pragma omp parallel for schedule(static)
-            for (size_t q = 0; q < order; ++q) std::invoke(fn, q);
+        static size_t lane_count(size_t order) {
+#ifdef _OPENMP
+            return std::min(order, size_t(omp_get_max_threads()));
+#else
+            return std::min(order, size_t{1});
+#endif
         }
+
+        static void invoke(size_t order, auto&& fn) {
+#ifdef _OPENMP
+            int lanes = static_cast<int>(lane_count(order));
+            #pragma omp parallel for schedule(static) num_threads(lanes)
+            for (size_t q = 0; q < order; ++q) {
+                std::invoke(fn, q, omp_get_thread_num());
+            }
+#else
+            for (size_t q = 0; q < order; ++q) std::invoke(fn, q, 0);
+#endif
+        }
+
     };
 
 }

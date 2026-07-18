@@ -16,6 +16,14 @@
 #define MAGNUS_RESTRICT
 #endif
 #endif
+
+#ifndef MAGNUS_ALWAYS_INLINE
+#if defined(__GNUC__) || defined(__clang__)
+#define MAGNUS_ALWAYS_INLINE [[gnu::always_inline]] inline
+#else
+#define MAGNUS_ALWAYS_INLINE inline
+#endif
+#endif
 namespace Magnus {
 
     template <class T>

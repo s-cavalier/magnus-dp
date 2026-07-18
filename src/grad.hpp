@@ -20,42 +20,37 @@ namespace Magnus::VJP {
         const typename Int::allocator_t& alloc = typename Int::allocator_t()
     ) {
         using namespace Magnus;
-        using NumT = typename Int::numeric_t;
-        using AllocatorT = typename Int::allocator_t;
         using MatrixViewT = typename Int::matrix_t;
-        using DynMatrixT = DynMatrix<NumT, typename Int::matrix_policy_t, AllocatorT>;
-        using DynMatrixSpanT = DynMatrixSpan<NumT, typename Int::matrix_policy_t, AllocatorT>;
 
         size_t mat_dim = A.mat_dim();
         size_t sample_len = A.length();
         double dt = (tf - t0) / (sample_len - 1);
-
-        Int integrator( mat_dim, alloc );
 
         if ( n == 1 ) return;
 
         auto gl_table = GLTable::get();
         GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
 
-        DynMatrixSpanT Y( mat_dim, sample_len, alloc );
-        DynMatrixT total_copy( mat_dim, alloc );
+        size_t worker_count = GLIntegrator::lane_count(view.order());
+        std::vector<FwdPathWorkspace<Int>> workspaces;
+        workspaces.reserve(worker_count);
+        for (size_t i = 0; i < worker_count; ++i) workspaces.emplace_back(mat_dim, sample_len, alloc);
 
-        MatrixViewT temp = integrator.borrow_scratch();
-
-        GLIntegrator::invoke(view.order(), [&](size_t q){
-            auto [ w_q, x_q ] = view[q];
+        GLIntegrator::invoke(view.order(), [&](size_t q, int ln){
+            auto& ws = workspaces[ln];
+            double x_q = view[q].second;
             double shift = x_q - 1;
 
-            Y.copy_from(A);
+            ws.Y.copy_from(A);
 
             for ( size_t k = 2; k <= n; ++k ) {
-                integrator.prefix( Y, dt );
+                ws.integrator.prefix(ws.Y, dt);
 
-                vjp_data.record_prefix(q, k, Y);
+                vjp_data.record_prefix(q, k, ws.Y);
 
-                MatrixViewT total = Y[ sample_len - 1 ];
-                total_copy.copy_from(total);
-                Y.sample_update(A, total_copy, shift, temp);
+                MatrixViewT total = ws.Y[sample_len - 1];
+                ws.total_copy.copy_from(total);
+                ws.Y.sample_update(A, ws.total_copy, shift, ws.temp);
             }
         });
     }
@@ -123,7 +118,7 @@ namespace Magnus::VJP {
 
         MatrixT tmp = integrator.borrow_scratch();
 
-        GLIntegrator::invoke(view.order(), [&](size_t q){
+        GLIntegrator::invoke(view.order(), [&](size_t q, int ln){
             auto [w_q, x_q] = view[q];
 
             double shift = x_q - 1.0;
@@ -211,7 +206,7 @@ namespace Magnus::VJP {
 
         MatrixT tmp = integrator.borrow_scratch();
 
-        GLIntegrator::invoke(view.order(), [&](size_t q){
+        GLIntegrator::invoke(view.order(), [&](size_t q, int ln){
             auto [w_q, x_q] = view[q];
 
             double shift = x_q - 1.0;
@@ -313,7 +308,7 @@ namespace Magnus::VJP {
 
         MatrixT tmp = integrator.borrow_scratch();
 
-        GLIntegrator::invoke(view.order(), [&](size_t q){
+        GLIntegrator::invoke(view.order(), [&](size_t q, int ln){
             auto [w_q, x_q] = view[q];
 
             double shift = x_q - 1.0;

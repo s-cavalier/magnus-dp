@@ -116,7 +116,7 @@ namespace Magnus {
     }
 
     template <class NumT, size_t Dim>
-    void fixed_dim_sample_update(
+    MAGNUS_ALWAYS_INLINE void fixed_dim_sample_update(
         [[maybe_unused]] size_t dim,
         size_t len,
         const NumT* MAGNUS_RESTRICT A,
