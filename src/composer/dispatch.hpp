@@ -300,7 +300,7 @@ namespace Dispatch {
         throw std::invalid_argument( "could not deduce kernel op from str in Magnus::Dispatch::op_from_str(std::string_view)" );
     }
 
-    template <Integrator Int, bool RecordVJP>
+    template <Integrator Int, class GLIntegrator, bool RecordVJP>
     void one(
         Params& p,
         const api_allocator_t<typename Int::numeric_t>& alloc = api_allocator_t<typename Int::numeric_t>()
@@ -316,10 +316,12 @@ namespace Dispatch {
         matrix_span_t in( data.in, p.dim, p.samples );
 
         auto recorder = make_vjp_recorder<RecordVJP, Int>(p);
-        Magnus::one<Int>(out, p.n, in, p.t0, p.tf, recorder, typed_alloc);
+        Magnus::one<Int, decltype(recorder), GLIntegrator>(
+            out, p.n, in, p.t0, p.tf, recorder, typed_alloc
+        );
     }
 
-    template <Integrator Int, bool RecordVJP>
+    template <Integrator Int, class GLIntegrator, bool RecordVJP>
     void many(
         Params& p,
         const api_allocator_t<typename Int::numeric_t>& alloc = api_allocator_t<typename Int::numeric_t>()
@@ -335,10 +337,12 @@ namespace Dispatch {
         matrix_span_t in( data.in, p.dim, p.samples );
 
         auto recorder = make_vjp_recorder<RecordVJP, Int>(p);
-        Magnus::many<Int>(out, in, p.t0, p.tf, recorder, typed_alloc);
+        Magnus::many<Int, decltype(recorder), GLIntegrator>(
+            out, in, p.t0, p.tf, recorder, typed_alloc
+        );
     }
 
-    template <Integrator Int, bool RecordVJP>
+    template <Integrator Int, class GLIntegrator, bool RecordVJP>
     void sum(
         Params& p,
         const api_allocator_t<typename Int::numeric_t>& alloc = api_allocator_t<typename Int::numeric_t>()
@@ -354,17 +358,19 @@ namespace Dispatch {
         matrix_span_t in( data.in, p.dim, p.samples );
 
         auto recorder = make_vjp_recorder<RecordVJP, Int>(p);
-        Magnus::sum<Int>(out, p.n, in, p.t0, p.tf, recorder, typed_alloc);
+        Magnus::sum<Int, decltype(recorder), GLIntegrator>(
+            out, p.n, in, p.t0, p.tf, recorder, typed_alloc
+        );
     }
 }
     template <class NumT>
     using kernel_dispatch_t = void(*)(Params&, const api_allocator_t<NumT>&);
 
-    template <Integrator Int, bool RecordVJP>
+    template <Integrator Int, class GLIntegrator, bool RecordVJP>
     inline constexpr std::array<kernel_dispatch_t<typename Int::numeric_t>, 3> kernels{
-        &Dispatch::one<Int, RecordVJP>, 
-        &Dispatch::many<Int, RecordVJP>, 
-        &Dispatch::sum<Int, RecordVJP> 
+        &Dispatch::one<Int, GLIntegrator, RecordVJP>,
+        &Dispatch::many<Int, GLIntegrator, RecordVJP>,
+        &Dispatch::sum<Int, GLIntegrator, RecordVJP>
     };
 
 namespace Dispatch {

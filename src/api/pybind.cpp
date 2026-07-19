@@ -51,6 +51,7 @@ py::tuple dispatch_names_tuple() {
 py::tuple numeric_backends() { return dispatch_names_tuple<NumBackends>(); }
 py::tuple matrix_backends() { return dispatch_names_tuple<MatrixBackends>(); }
 py::tuple integrators() { return dispatch_names_tuple<IntegratorBackends>(); }
+py::tuple gl_backends() { return dispatch_names_tuple<GLBackends>(); }
 py::tuple ops() { return names_tuple(Dispatch::kernel_op_names); }
 
 size_t max_order() {
@@ -151,6 +152,7 @@ py::object run_typed(
     std::string_view op,
     std::string_view matrix_backend,
     std::string_view integrator,
+    std::string_view gl_backend,
     bool record_vjp
 ) {
     CArrayCoercible<NumT> typed = CArrayCoercible<NumT>::ensure(data);
@@ -180,6 +182,7 @@ py::object run_typed(
             Dispatch::op_from_str(op),
             MatrixBackends::resolve(matrix_backend),
             IntegratorBackends::resolve(integrator),
+            GLBackends::resolve(gl_backend),
             record_vjp
         );
     }
@@ -196,6 +199,7 @@ py::object run_spacecurve_typed(
     double tf,
     std::string_view op,
     std::string_view integrator,
+    std::string_view gl_backend,
     bool record_vjp
 ) {
     CArrayCoercible<NumT> typed = CArrayCoercible<NumT>::ensure(data);
@@ -223,6 +227,7 @@ py::object run_spacecurve_typed(
             tf,
             Dispatch::op_from_str(op),
             IntegratorBackends::resolve(integrator),
+            GLBackends::resolve(gl_backend),
             record_vjp
         );
     }
@@ -357,14 +362,15 @@ py::object compute(
     std::string_view op,
     std::string_view matrix_backend,
     std::string_view integrator,
+    std::string_view gl_backend,
     bool record_vjp
 ) {
     py::dtype dtype = data.dtype();
 
-    if (dtype.is(py::dtype::of<f32>())) return run_typed<f32>(n, data, t0, tf, op, matrix_backend, integrator, record_vjp);
-    if (dtype.is(py::dtype::of<f64>())) return run_typed<f64>(n, data, t0, tf, op, matrix_backend, integrator, record_vjp);
-    if (dtype.is(py::dtype::of<c32>())) return run_typed<c32>(n, data, t0, tf, op, matrix_backend, integrator, record_vjp);
-    if (dtype.is(py::dtype::of<c64>())) return run_typed<c64>(n, data, t0, tf, op, matrix_backend, integrator, record_vjp);
+    if (dtype.is(py::dtype::of<f32>())) return run_typed<f32>(n, data, t0, tf, op, matrix_backend, integrator, gl_backend, record_vjp);
+    if (dtype.is(py::dtype::of<f64>())) return run_typed<f64>(n, data, t0, tf, op, matrix_backend, integrator, gl_backend, record_vjp);
+    if (dtype.is(py::dtype::of<c32>())) return run_typed<c32>(n, data, t0, tf, op, matrix_backend, integrator, gl_backend, record_vjp);
+    if (dtype.is(py::dtype::of<c64>())) return run_typed<c64>(n, data, t0, tf, op, matrix_backend, integrator, gl_backend, record_vjp);
     throw py::type_error("magnus only supports dtypes float32, float64, complex64, and complex128");
 }
 
@@ -375,14 +381,15 @@ py::object compute_sc(
     double tf,
     std::string_view op,
     std::string_view integrator,
+    std::string_view gl_backend,
     bool record_vjp
 ) {
     py::dtype dtype = data.dtype();
 
-    if (dtype.is(py::dtype::of<f32>())) return run_spacecurve_typed<f32>(n, data, t0, tf, op, integrator, record_vjp);
-    if (dtype.is(py::dtype::of<f64>())) return run_spacecurve_typed<f64>(n, data, t0, tf, op, integrator, record_vjp);
-    if (dtype.is(py::dtype::of<c32>())) return run_spacecurve_typed<c32>(n, data, t0, tf, op, integrator, record_vjp);
-    if (dtype.is(py::dtype::of<c64>())) return run_spacecurve_typed<c64>(n, data, t0, tf, op, integrator, record_vjp);
+    if (dtype.is(py::dtype::of<f32>())) return run_spacecurve_typed<f32>(n, data, t0, tf, op, integrator, gl_backend, record_vjp);
+    if (dtype.is(py::dtype::of<f64>())) return run_spacecurve_typed<f64>(n, data, t0, tf, op, integrator, gl_backend, record_vjp);
+    if (dtype.is(py::dtype::of<c32>())) return run_spacecurve_typed<c32>(n, data, t0, tf, op, integrator, gl_backend, record_vjp);
+    if (dtype.is(py::dtype::of<c64>())) return run_spacecurve_typed<c64>(n, data, t0, tf, op, integrator, gl_backend, record_vjp);
     throw py::type_error("magnus only supports dtypes float32, float64, complex64, and complex128");
 }
 
@@ -457,6 +464,12 @@ PYBIND11_MODULE(_core, m) {
     );
 
     m.def(
+        "gl_backends",
+        &Magnus::detail::gl_backends,
+        "Return the available Gauss-Legendre execution backend dispatch names."
+    );
+
+    m.def(
         "ops",
         &Magnus::detail::ops,
         "Return the available kernel operation dispatch names."
@@ -481,6 +494,7 @@ PYBIND11_MODULE(_core, m) {
         py::arg("op") = "sum",
         py::arg("matrix_backend") = "Auto",
         py::arg("integrator") = "Auto",
+        py::arg("gl_backend") = "Auto",
         py::arg("record_vjp") = false,
         "Compute a Magnus operation from sampled matrix data."
     );
@@ -494,6 +508,7 @@ PYBIND11_MODULE(_core, m) {
         py::arg("tf"),
         py::arg("op") = "sum",
         py::arg("integrator") = "Auto",
+        py::arg("gl_backend") = "Auto",
         py::arg("record_vjp") = false,
         "Compute a SpaceCurve Magnus operation from sampled 3-vector data."
     );

@@ -10,6 +10,7 @@ from ._core import compute as _compute_sampled
 from ._core import compute_sc as _compute_sc_sampled
 from ._core import compute_sc_vjp as _compute_sc_vjp_sampled
 from ._core import compute_vjp as _compute_vjp_sampled
+from ._core import gl_backends
 from ._core import integrators
 from ._core import matrix_backends
 from ._core import max_order
@@ -17,13 +18,14 @@ from ._core import numeric_backends
 from ._core import ops
 
 if TYPE_CHECKING:
-    from ._generated_typing import IntegratorName, KernelOpName, MatrixBackendName
+    from ._generated_typing import GLBackendName, IntegratorName, KernelOpName, MatrixBackendName
 
 __all__ = [
     "max_order",
     "numeric_backends",
     "matrix_backends",
     "integrators",
+    "gl_backends",
     "ops",
     "replace_gl_table",
     "compute",
@@ -95,6 +97,7 @@ def compute(
     vectorized: bool = True,
     matrix_backend: MatrixBackendName = "Auto",
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     record_vjp: bool = False,
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     """Return the Magnus output and, when requested, its saved forward carry."""
@@ -114,6 +117,7 @@ def compute(
         op=op,
         matrix_backend=matrix_backend,
         integrator=integrator,
+        gl_backend=gl_backend,
         record_vjp=record_vjp,
     )
 
@@ -129,6 +133,7 @@ def compute_sc(
     dtype=None,
     vectorized: bool = True,
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     record_vjp: bool = False,
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     """Return the SpaceCurve Magnus output and, when requested, its saved forward carry."""
@@ -147,6 +152,7 @@ def compute_sc(
         tf,
         op=op,
         integrator=integrator,
+        gl_backend=gl_backend,
         record_vjp=record_vjp,
     )
 

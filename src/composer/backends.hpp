@@ -3,6 +3,7 @@
 #include "dispatch.hpp"
 #include "integration/backends.hpp"
 #include "linalg/backends.hpp"
+#include "util/gausslegendre_backends.hpp"
 
 #include <algorithm>
 #include <array>
@@ -18,7 +19,7 @@ namespace Magnus {
 
     void initialize_default_gl_table();
 
-    std::unique_ptr<KernelPlan> make_plan(Params& p, size_t num_idx, size_t mat_idx, size_t int_idx, bool vjp_record, Dispatch::KernelOp op);
+    std::unique_ptr<KernelPlan> make_plan(Params& p, size_t num_idx, size_t mat_idx, size_t int_idx, size_t gl_idx, bool vjp_record, Dispatch::KernelOp op);
     std::unique_ptr<KernelPlan> make_vjp_plan(VJPParams& p, size_t num_idx, size_t mat_idx, size_t int_idx, Dispatch::KernelOp op);
 
     namespace detail {
@@ -191,6 +192,7 @@ namespace Magnus {
             Dispatch::KernelOp op,
             size_t mat_idx,
             size_t int_idx,
+            size_t gl_idx,
             bool record_vjp,
             const api_erased_allocator_t& alloc = api_erased_allocator_t()
         ) {
@@ -205,7 +207,15 @@ namespace Magnus {
 
             size_t num_idx = NumBackends::resolve(type_name_v<NumT>);
 
-            std::unique_ptr<KernelPlan> plan = make_plan(params, num_idx, mat_idx, int_idx, record_vjp, op);
+            std::unique_ptr<KernelPlan> plan = make_plan(
+                params,
+                num_idx,
+                mat_idx,
+                int_idx,
+                gl_idx,
+                record_vjp,
+                op
+            );
             plan->run(alloc);
         }
 
@@ -251,6 +261,7 @@ namespace Magnus {
             double tf,
             Dispatch::KernelOp op,
             size_t int_idx,
+            size_t gl_idx,
             bool record_vjp,
             const api_erased_allocator_t& alloc = api_erased_allocator_t()
         ) {
@@ -277,6 +288,7 @@ namespace Magnus {
                 op,
                 MatrixBackends::resolve("SpaceCurve"),
                 int_idx,
+                gl_idx,
                 record_vjp,
                 alloc
             );
@@ -381,6 +393,7 @@ namespace Magnus {
             op,
             mat_idx,
             int_idx,
+            GLBackends::resolve("Auto"),
             record_vjp
         );
     }
@@ -539,6 +552,7 @@ namespace Magnus {
             tf,
             op,
             int_idx,
+            GLBackends::resolve("Auto"),
             record_vjp
         );
     }

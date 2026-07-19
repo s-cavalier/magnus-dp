@@ -25,6 +25,7 @@ ffi::Error matrix_impl(
     double tf,
     std::string_view matrix_backend,
     std::string_view integrator,
+    std::string_view gl_backend,
     size_t samples,
     size_t dim,
     ffi::AnyBuffer data,
@@ -42,6 +43,7 @@ ffi::Error matrix_impl(
         Dispatch::op_from_str(op),
         MatrixBackends::resolve(matrix_backend),
         IntegratorBackends::resolve(integrator),
+        GLBackends::resolve(gl_backend),
         false
     );
 
@@ -56,6 +58,7 @@ ffi::Error matrix_impl_fwd(
     double tf,
     std::string_view matrix_backend,
     std::string_view integrator,
+    std::string_view gl_backend,
     size_t samples,
     size_t dim,
     ffi::AnyBuffer data,
@@ -74,6 +77,7 @@ ffi::Error matrix_impl_fwd(
         Dispatch::op_from_str(op),
         MatrixBackends::resolve(matrix_backend),
         IntegratorBackends::resolve(integrator),
+        GLBackends::resolve(gl_backend),
         true
     );
 
@@ -87,6 +91,7 @@ ffi::Error spacecurve_impl(
     double t0,
     double tf,
     std::string_view integrator,
+    std::string_view gl_backend,
     size_t samples,
     ffi::AnyBuffer data,
     ffi::Result<ffi::AnyBuffer> out
@@ -101,6 +106,7 @@ ffi::Error spacecurve_impl(
         tf,
         Dispatch::op_from_str(op),
         IntegratorBackends::resolve(integrator),
+        GLBackends::resolve(gl_backend),
         false
     );
 
@@ -114,6 +120,7 @@ ffi::Error spacecurve_impl_fwd(
     double t0,
     double tf,
     std::string_view integrator,
+    std::string_view gl_backend,
     size_t samples,
     ffi::AnyBuffer data,
     ffi::Result<ffi::AnyBuffer> out,
@@ -129,6 +136,7 @@ ffi::Error spacecurve_impl_fwd(
         tf,
         Dispatch::op_from_str(op),
         IntegratorBackends::resolve(integrator),
+        GLBackends::resolve(gl_backend),
         true
     );
 
@@ -218,6 +226,7 @@ ffi::Error matrix_dispatch(
     double tf,
     std::string_view matrix_backend,
     std::string_view integrator,
+    std::string_view gl_backend,
     ffi::AnyBuffer data,
     ffi::Result<ffi::AnyBuffer> out
 ) {
@@ -236,6 +245,7 @@ ffi::Error matrix_dispatch(
             tf,
             matrix_backend,
             integrator,
+            gl_backend,
             input_shape.samples,
             input_shape.dim,
             data,
@@ -255,6 +265,7 @@ ffi::Error matrix_dispatch_fwd(
     double tf,
     std::string_view matrix_backend,
     std::string_view integrator,
+    std::string_view gl_backend,
     ffi::AnyBuffer data,
     ffi::Result<ffi::AnyBuffer> out,
     ffi::Result<ffi::AnyBuffer> carry_out
@@ -276,6 +287,7 @@ ffi::Error matrix_dispatch_fwd(
             tf,
             matrix_backend,
             integrator,
+            gl_backend,
             input_shape.samples,
             input_shape.dim,
             data,
@@ -295,6 +307,7 @@ ffi::Error spacecurve_dispatch(
     double t0,
     double tf,
     std::string_view integrator,
+    std::string_view gl_backend,
     ffi::AnyBuffer data,
     ffi::Result<ffi::AnyBuffer> out
 ) {
@@ -312,6 +325,7 @@ ffi::Error spacecurve_dispatch(
             t0,
             tf,
             integrator,
+            gl_backend,
             input_shape.samples,
             data,
             out
@@ -422,6 +436,7 @@ ffi::Error spacecurve_dispatch_fwd(
     double t0,
     double tf,
     std::string_view integrator,
+    std::string_view gl_backend,
     ffi::AnyBuffer data,
     ffi::Result<ffi::AnyBuffer> out,
     ffi::Result<ffi::AnyBuffer> carry_out
@@ -442,6 +457,7 @@ ffi::Error spacecurve_dispatch_fwd(
             t0,
             tf,
             integrator,
+            gl_backend,
             input_shape.samples,
             data,
             out,
@@ -466,6 +482,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Attr<double>("tf")
         .Attr<std::string_view>("matrix_backend")
         .Attr<std::string_view>("integrator")
+        .Attr<std::string_view>("gl_backend")
         .Arg<ffi::AnyBuffer>()
         .Ret<ffi::AnyBuffer>()
 );
@@ -480,6 +497,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Attr<double>("tf")
         .Attr<std::string_view>("matrix_backend")
         .Attr<std::string_view>("integrator")
+        .Attr<std::string_view>("gl_backend")
         .Arg<ffi::AnyBuffer>()
         .Ret<ffi::AnyBuffer>()
         .Ret<ffi::AnyBuffer>()
@@ -494,6 +512,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Attr<double>("t0")
         .Attr<double>("tf")
         .Attr<std::string_view>("integrator")
+        .Attr<std::string_view>("gl_backend")
         .Arg<ffi::AnyBuffer>()
         .Ret<ffi::AnyBuffer>()
 );
@@ -507,6 +526,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Attr<double>("t0")
         .Attr<double>("tf")
         .Attr<std::string_view>("integrator")
+        .Attr<std::string_view>("gl_backend")
         .Arg<ffi::AnyBuffer>()
         .Ret<ffi::AnyBuffer>()
         .Ret<ffi::AnyBuffer>()
