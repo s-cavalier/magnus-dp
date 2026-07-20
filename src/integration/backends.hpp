@@ -2,7 +2,6 @@
 #define __INTEGRATE_BACKENDS_HPP__
 #include "integrate.hpp"
 #include "composer/dispatch.hpp"
-#include "util/memorybuffer.hpp"
 
 #include "default.hpp"
 #include "trapezoid.hpp"
@@ -13,7 +12,7 @@ namespace Magnus {
 
     struct DefaultIntBackend {
         template <class NumT, MatrixPolicy MatPolicy>
-        using type = DefaultIntegrator<NumT, MatPolicy, MemoryBuffer::Allocator<NumT>>;
+        using type = DefaultIntegrator<NumT, MatPolicy, api_allocator_t<NumT>>;
 
         static consteval std::string_view dispatch_name() { return "Riemann"; }
 
@@ -23,7 +22,7 @@ namespace Magnus {
 
     struct TrapezoidBackend {
         template <class NumT, MatrixPolicy MatPolicy>
-        using type = TrapezoidalIntegrator<NumT, MatPolicy, MemoryBuffer::Allocator<NumT>>;
+        using type = TrapezoidalIntegrator<NumT, MatPolicy, api_allocator_t<NumT>>;
 
         static consteval std::string_view dispatch_name() { return "Trapezoid"; }
 
@@ -33,7 +32,7 @@ namespace Magnus {
 
     struct SimpsonBackend {
         template <class NumT, MatrixPolicy MatPolicy>
-        using type = SimpsonIntegrator<NumT, MatPolicy, MemoryBuffer::Allocator<NumT>>;
+        using type = SimpsonIntegrator<NumT, MatPolicy, api_allocator_t<NumT>>;
 
         static consteval std::string_view dispatch_name() { return "Simpson"; }
 
@@ -43,7 +42,7 @@ namespace Magnus {
 
     struct BooleBackend {
         template <class NumT, MatrixPolicy MatPolicy>
-        using type = BooleIntegrator<NumT, MatPolicy, MemoryBuffer::Allocator<NumT>>;
+        using type = BooleIntegrator<NumT, MatPolicy, api_allocator_t<NumT>>;
 
         static consteval std::string_view dispatch_name() { return "Boole"; }
 

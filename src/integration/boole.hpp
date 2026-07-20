@@ -21,7 +21,7 @@ namespace Magnus {
         BooleIntegrator(size_t dim, const AllocatorT& alloc = AllocatorT()) :
             scratch(dim, 5, alloc) {}
 
-        void prefix(matrix_span_t& A, double dt) {
+        MAGNUS_ALWAYS_INLINE void prefix(matrix_span_t& A, double dt) {
             size_t len = A.length();
 
             matrix_t f0 = scratch[0];

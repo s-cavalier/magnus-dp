@@ -3,10 +3,15 @@ cmake_minimum_required(VERSION 3.16)
 project(magnus LANGUAGES CXX)
 
 option(MAGNUS_ENABLE_JAX_FFI "Build JAX FFI registration hooks" ON)
+option(MAGNUS_ENABLE_OPENMP "Enable OpenMP support when available" ON)
 
 find_package(BLAS REQUIRED)
 find_package(TBB REQUIRED)
 find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
+
+if(MAGNUS_ENABLE_OPENMP)
+    find_package(OpenMP)
+endif()
 
 set(MAGNUS_GL_MAX_ORDER 64 CACHE STRING "Maximum generated Gauss-Legendre order")
 
@@ -63,6 +68,12 @@ target_compile_features(magnus_core PUBLIC cxx_std_23)
 target_compile_options(magnus_core PUBLIC -O3 -march=native)
 target_include_directories(magnus_core PUBLIC src)
 target_link_libraries(magnus_core PUBLIC BLAS::BLAS TBB::tbb)
+target_link_libraries(magnus_core PUBLIC atomic)
+
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(magnus_core PUBLIC OpenMP::OpenMP_CXX)
+endif()
+
 set_target_properties(magnus_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_executable(magnus_typing_gen
@@ -138,6 +149,7 @@ if(MAGNUS_ENABLE_JAX_FFI)
 endif()
 
 target_link_libraries(magnus_python PRIVATE magnus_core)
+target_link_libraries(magnus_python PRIVATE atomic)
 target_compile_features(magnus_python PRIVATE cxx_std_23)
 target_compile_options(magnus_python PRIVATE
     -O3

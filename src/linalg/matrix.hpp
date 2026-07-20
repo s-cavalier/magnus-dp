@@ -17,6 +17,13 @@
 #endif
 #endif
 
+#ifndef MAGNUS_ALWAYS_INLINE
+#if defined(__GNUC__) || defined(__clang__)
+#define MAGNUS_ALWAYS_INLINE [[gnu::always_inline]] inline
+#else
+#define MAGNUS_ALWAYS_INLINE inline
+#endif
+#endif
 namespace Magnus {
 
     template <class T>
@@ -247,9 +254,16 @@ namespace Magnus {
 
     template <class NumT, MatrixPolicy MatPolicyT, class AllocatorT = std::allocator<NumT>>
     class DynMatrix : public MatrixView<NumT, MatPolicyT>, private detail::alloc_holder<AllocatorT> {
+        using traits_t = std::allocator_traits<AllocatorT>;
+
+        void allocate_for_dim(size_t dim) {
+            this->m_dim = dim;
+            this->m_data = dim == 0 ? nullptr : traits_t::allocate(this->alloc, dim * dim);
+        }
 
         void reset() {
-            if (this->m_dim > 0) this->alloc.deallocate(this->m_data, this->size());
+            if (this->m_data != nullptr) traits_t::deallocate(this->alloc, this->m_data, this->size());
+            this->m_data = nullptr;
             this->m_dim = 0;
         }
 
@@ -260,42 +274,47 @@ namespace Magnus {
         using AllocBase = detail::alloc_holder<AllocatorT>;
 
         DynMatrix(size_t dim, const AllocatorT& alloc = AllocatorT()) : Base(nullptr, dim), AllocBase(alloc) {
-            this->m_data = this->alloc.allocate(dim * dim);
+            this->m_data = dim == 0 ? nullptr : traits_t::allocate(this->alloc, dim * dim);
         }
 
-        DynMatrix(const DynMatrix& other) : Base(nullptr, other.m_dim), AllocBase(other.alloc) {
-            size_t other_size = other.size();
-            this->m_data = this->alloc.allocate(other_size);
-            std::copy_n( other.m_data, other_size, this->m_data );
-        }
+        DynMatrix(const DynMatrix& other) = delete;
 
         DynMatrix(DynMatrix&& other) noexcept : Base(other.m_data, other.m_dim), AllocBase( std::move( other.alloc ) ) {
+            other.m_data = nullptr;
             other.m_dim = 0;
         }
 
-        DynMatrix& operator=(const DynMatrix& other) {
-            if ( this == &other ) return *this;
-            size_t other_size = other.size();
-
-            if ( this->m_dim == other.m_dim ) {
-                std::copy_n( other.m_data, other_size, this->m_data );
-                return *this;
-            }
-
-            reset();
-            this->m_data = this->alloc.allocate(other_size);
-            this->m_dim = other.m_dim;
-            std::copy_n( other.m_data, other_size, this->m_data );
-
-            return *this;
-        }
+        DynMatrix& operator=(const DynMatrix& other) = delete;
 
         DynMatrix& operator=(DynMatrix&& other) noexcept {
             if (this == &other) return *this;
-            reset();
-            this->m_data = other.m_data;
-            this->m_dim = other.m_dim;
-            other.m_dim = 0;
+
+            if constexpr (traits_t::propagate_on_container_move_assignment::value) {
+                reset();
+                this->alloc = std::move(other.alloc);
+                this->m_data = other.m_data;
+                this->m_dim = other.m_dim;
+                other.m_data = nullptr;
+                other.m_dim = 0;
+                return *this;
+            }
+
+            if (this->alloc == other.alloc) {
+                reset();
+                this->m_data = other.m_data;
+                this->m_dim = other.m_dim;
+                other.m_data = nullptr;
+                other.m_dim = 0;
+                return *this;
+            }
+
+            if (this->m_dim != other.m_dim) {
+                reset();
+                allocate_for_dim(other.m_dim);
+            }
+
+            if (other.size() != 0) std::move(other.m_data, other.m_data + other.size(), this->m_data);
+            other.reset();
             return *this;
         }
 
@@ -385,8 +404,17 @@ namespace Magnus {
 
     template <class NumT, MatrixPolicy MatPolicyT, class AllocatorT = std::allocator<NumT>>
     class DynMatrixSpan : public MatrixSpan<NumT, MatPolicyT>, private detail::alloc_holder<AllocatorT> {
+        using traits_t = std::allocator_traits<AllocatorT>;
+
+        void allocate_for_shape(size_t dim, size_t length) {
+            this->m_dim = dim;
+            this->m_size = dim * dim;
+            this->m_len = length;
+            this->m_data = this->size() == 0 ? nullptr : traits_t::allocate(this->alloc, this->size());
+        }
+
         void reset() {
-            if (this->m_data != nullptr) this->alloc.deallocate(this->m_data, this->size());
+            if (this->m_data != nullptr) traits_t::deallocate(this->alloc, this->m_data, this->size());
 
             this->m_data = nullptr;
             this->m_dim = 0;
@@ -399,13 +427,10 @@ namespace Magnus {
         using AllocBase = detail::alloc_holder<AllocatorT>;
 
         DynMatrixSpan(size_t dim, size_t length, const AllocatorT& alloc = AllocatorT()) : Base(nullptr, dim, length), AllocBase(alloc) {
-            this->m_data = this->alloc.allocate(this->size());
+            this->m_data = this->size() == 0 ? nullptr : traits_t::allocate(this->alloc, this->size());
         }
 
-        DynMatrixSpan(const DynMatrixSpan& other) : Base(nullptr, other.m_dim, other.m_len), AllocBase(other.alloc) {
-            this->m_data = this->alloc.allocate(this->size());
-            std::copy_n(other.m_data, this->size(), this->m_data);
-        }
+        DynMatrixSpan(const DynMatrixSpan& other) = delete;
 
         DynMatrixSpan(DynMatrixSpan&& other) noexcept : Base(other.m_data, other.m_dim, other.m_len), AllocBase(std::move(other.alloc)) {
             other.m_data = nullptr;
@@ -414,41 +439,47 @@ namespace Magnus {
             other.m_len = 0;
         }
 
-        DynMatrixSpan& operator=(const DynMatrixSpan& other) {
-            if (this == &other) return *this;
-
-            size_t other_size = other.size();
-
-            if (this->m_dim == other.m_dim && this->m_len == other.m_len) {
-                std::copy_n(other.m_data, other_size, this->m_data);
-                return *this;
-            }
-
-            reset();
-            this->m_dim = other.m_dim;
-            this->m_size = other.m_size;
-            this->m_len = other.m_len;
-
-            this->m_data = this->alloc.allocate(other_size);
-            std::copy_n(other.m_data, other_size, this->m_data);
-
-            return *this;
-        }
+        DynMatrixSpan& operator=(const DynMatrixSpan& other) = delete;
 
         DynMatrixSpan& operator=(DynMatrixSpan&& other) noexcept {
             if (this == &other) return *this;
 
-            reset();
-            this->alloc = std::move(other.alloc);
-            this->m_data = other.m_data;
-            this->m_dim = other.m_dim;
-            this->m_size = other.m_size;
-            this->m_len = other.m_len;
+            if constexpr (traits_t::propagate_on_container_move_assignment::value) {
+                reset();
+                this->alloc = std::move(other.alloc);
+                this->m_data = other.m_data;
+                this->m_dim = other.m_dim;
+                this->m_size = other.m_size;
+                this->m_len = other.m_len;
 
-            other.m_data = nullptr;
-            other.m_dim = 0;
-            other.m_size = 0;
-            other.m_len = 0;
+                other.m_data = nullptr;
+                other.m_dim = 0;
+                other.m_size = 0;
+                other.m_len = 0;
+                return *this;
+            }
+
+            if (this->alloc == other.alloc) {
+                reset();
+                this->m_data = other.m_data;
+                this->m_dim = other.m_dim;
+                this->m_size = other.m_size;
+                this->m_len = other.m_len;
+
+                other.m_data = nullptr;
+                other.m_dim = 0;
+                other.m_size = 0;
+                other.m_len = 0;
+                return *this;
+            }
+
+            if (this->m_dim != other.m_dim || this->m_len != other.m_len) {
+                reset();
+                allocate_for_shape(other.m_dim, other.m_len);
+            }
+
+            if (other.size() != 0) std::move(other.m_data, other.m_data + other.size(), this->m_data);
+            other.reset();
 
             return *this;
         }

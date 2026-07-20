@@ -116,6 +116,7 @@ for n_order in [6, 8, 10, 12, 14, 16, 18, 20, 22]:
             op="sum",
             matrix_backend="Fixed2",
             integrator="Boole",
+            gl_backend='openmp'
         )
     )
 

@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <new>
 #include <span>
 #include <cstdlib>
 #include <memory>
@@ -10,6 +11,7 @@
 namespace Magnus {
 
     static constexpr size_t DEFAULT_ALIGNMENT = 32;
+    static constexpr size_t CACHE_LINE_ALIGNMENT = std::hardware_constructive_interference_size;
 
     class MemoryBuffer {
         std::byte* buf;

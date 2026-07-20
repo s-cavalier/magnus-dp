@@ -4,13 +4,14 @@
 #include "magnus.hpp"
 #include "integration/integrate.hpp"
 #include "util/extra.hpp"
+#include "util/gausslegendre.hpp"
 #include <optional>
 
 namespace Magnus::VJP {
 
     // Special magnus.hpp-style kernel for just getting intermediate, VJP data.
     // we don't save any fwd values, hence the name `none`. But, we do store vjp_data.
-    template <Integrator Int>
+    template <Integrator Int, class GLIntegrator = GL_forloop>
     void none(
         size_t n,
         typename Int::matrix_span_t& A,
@@ -19,49 +20,42 @@ namespace Magnus::VJP {
         const typename Int::allocator_t& alloc = typename Int::allocator_t()
     ) {
         using namespace Magnus;
-        using NumT = typename Int::numeric_t;
         using MatrixViewT = typename Int::matrix_t;
-        using MatrixSpanT = typename Int::matrix_span_t;
 
         size_t mat_dim = A.mat_dim();
-        size_t matrix_size = mat_dim * mat_dim;
         size_t sample_len = A.length();
-        size_t total_data_size = matrix_size * sample_len;
         double dt = (tf - t0) / (sample_len - 1);
-
-        Int integrator( mat_dim, alloc );
 
         if ( n == 1 ) return;
 
         auto gl_table = GLTable::get();
         GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
 
-        auto Y_data = allocate_unique<NumT>(total_data_size, alloc);
-        auto total_data = allocate_unique<NumT>(matrix_size, alloc);
-        MatrixSpanT Y( Y_data.get(), mat_dim, sample_len );
-        MatrixViewT total_copy( total_data.get(), mat_dim );
+        size_t worker_count = GLIntegrator::lane_count(view.order());
+        std::vector<FwdPathWorkspace<Int>> workspaces;
+        workspaces.reserve(worker_count);
+        for (size_t i = 0; i < worker_count; ++i) workspaces.emplace_back(mat_dim, sample_len, alloc);
 
-        MatrixViewT temp = integrator.borrow_scratch();
-
-        for ( size_t q = 0; q < view.order(); ++q ) {
-            auto [ w_q, x_q ] = view[q];
+        GLIntegrator::invoke(view.order(), [&](size_t q, int ln){
+            auto& ws = workspaces[ln];
+            double x_q = view[q].second;
             double shift = x_q - 1;
 
-            Y.copy_from(A);
+            ws.Y.copy_from(A);
 
             for ( size_t k = 2; k <= n; ++k ) {
-                integrator.prefix( Y, dt );
+                ws.integrator.prefix(ws.Y, dt);
 
-                vjp_data.record_prefix(q, k, Y);
+                vjp_data.record_prefix(q, k, ws.Y);
 
-                MatrixViewT total = Y[ sample_len - 1 ];
-                total_copy.copy_from(total);
-                Y.sample_update(A, total_copy, shift, temp);
+                MatrixViewT total = ws.Y[sample_len - 1];
+                ws.total_copy.copy_from(total);
+                ws.Y.sample_update(A, ws.total_copy, shift, ws.temp);
             }
-        }
+        });
     }
 
-    template <Integrator Int>
+    template <Integrator Int, class GLIntegrator = GL_forloop>
     void one(
         typename Int::matrix_span_t& dA,
         typename Int::matrix_t& dOut,
@@ -73,9 +67,11 @@ namespace Magnus::VJP {
         const typename Int::allocator_t& alloc = typename Int::allocator_t()
     ) {
         using NumT = typename Int::numeric_t;
+        using AllocatorT = typename Int::allocator_t;
         using MatrixT = typename Int::matrix_t;
         using SpanT = typename Int::matrix_span_t;
         using MatPolicyT = typename Int::matrix_policy_t;
+        using DynMatrixSpanT = DynMatrixSpan<NumT, MatPolicyT, AllocatorT>;
         using DataOwnerT = decltype(allocate_unique<NumT>(size_t{}, alloc));
         
         size_t dim = A.mat_dim();
@@ -103,7 +99,7 @@ namespace Magnus::VJP {
             local_data.emplace(allocate_unique<NumT>(data_size, alloc));
             fwd_data_tmp.emplace(local_data->get(), n, samples, dim);
 
-            none<Int>(
+            none<Int, GLIntegrator>(
                 n,
                 A,
                 t0,
@@ -118,12 +114,11 @@ namespace Magnus::VJP {
         auto gl_table = GLTable::get();
         GLTable::DataView view = gl_table->get_order((n + 3) / 2);
 
-        auto barY_data = allocate_unique<NumT>(span_size, alloc);
-        SpanT barY(barY_data.get(), dim, samples);
+        DynMatrixSpanT barY(dim, samples, alloc);
 
         MatrixT tmp = integrator.borrow_scratch();
 
-        for (size_t q = 0; q < view.order(); ++q) {
+        GLIntegrator::invoke(view.order(), [&](size_t q, int ln){
             auto [w_q, x_q] = view[q];
 
             double shift = x_q - 1.0;
@@ -147,10 +142,10 @@ namespace Magnus::VJP {
 
             // Reverse of the initial Y.copy_from(A) at the start of this q path.
             dA.add(barY);
-        }
+        });
     }
 
-    template <Integrator Int>
+    template <Integrator Int, class GLIntegrator = GL_forloop>
     void many(
         typename Int::matrix_span_t& dA,
         typename Int::matrix_span_t& dOut,
@@ -161,9 +156,11 @@ namespace Magnus::VJP {
         const typename Int::allocator_t& alloc = typename Int::allocator_t()
     ) {
         using NumT = typename Int::numeric_t;
+        using AllocatorT = typename Int::allocator_t;
         using MatrixT = typename Int::matrix_t;
         using SpanT = typename Int::matrix_span_t;
         using MatPolicyT = typename Int::matrix_policy_t;
+        using DynMatrixSpanT = DynMatrixSpan<NumT, MatPolicyT, AllocatorT>;
         using DataOwnerT = decltype(allocate_unique<NumT>(size_t{}, alloc));
 
         size_t n = dOut.length();
@@ -190,7 +187,7 @@ namespace Magnus::VJP {
             local_data.emplace(allocate_unique<NumT>(data_size, alloc));
             fwd_data_tmp.emplace(local_data->get(), n, samples, dim);
 
-            none<Int>(
+            none<Int, GLIntegrator>(
                 n,
                 A,
                 t0,
@@ -205,12 +202,11 @@ namespace Magnus::VJP {
         auto gl_table = GLTable::get();
         GLTable::DataView view = gl_table->get_order((n + 3) / 2);
 
-        auto barY_data = allocate_unique<NumT>(span_size, alloc);
-        SpanT barY(barY_data.get(), dim, samples);
+        DynMatrixSpanT barY(dim, samples, alloc);
 
         MatrixT tmp = integrator.borrow_scratch();
 
-        for (size_t q = 0; q < view.order(); ++q) {
+        GLIntegrator::invoke(view.order(), [&](size_t q, int ln){
             auto [w_q, x_q] = view[q];
 
             double shift = x_q - 1.0;
@@ -249,11 +245,10 @@ namespace Magnus::VJP {
             integrator.prefix_vjp(barY, dt);
 
             dA.add(barY);
-        }
-
+        });
     }
 
-    template <Integrator Int>
+    template <Integrator Int, class GLIntegrator = GL_forloop>
     void sum(
         typename Int::matrix_span_t& dA,
         typename Int::matrix_t& dOut,
@@ -265,9 +260,11 @@ namespace Magnus::VJP {
         const typename Int::allocator_t& alloc = typename Int::allocator_t()
     ) {
         using NumT = typename Int::numeric_t;
+        using AllocatorT = typename Int::allocator_t;
         using MatrixT = typename Int::matrix_t;
         using SpanT = typename Int::matrix_span_t;
         using MatPolicyT = typename Int::matrix_policy_t;
+        using DynMatrixSpanT = DynMatrixSpan<NumT, MatPolicyT, AllocatorT>;
         using DataOwnerT = decltype(allocate_unique<NumT>(size_t{}, alloc));
 
         size_t dim = A.mat_dim();
@@ -292,7 +289,7 @@ namespace Magnus::VJP {
             local_data.emplace(allocate_unique<NumT>(data_size, alloc));
             fwd_data_tmp.emplace(local_data->get(), n, samples, dim);
 
-            none<Int>(
+            none<Int, GLIntegrator>(
                 n,
                 A,
                 t0,
@@ -307,12 +304,11 @@ namespace Magnus::VJP {
         auto gl_table = GLTable::get();
         GLTable::DataView view = gl_table->get_order((n + 3) / 2);
 
-        auto barY_data = allocate_unique<NumT>(span_size, alloc);
-        SpanT barY(barY_data.get(), dim, samples);
+        DynMatrixSpanT barY(dim, samples, alloc);
 
         MatrixT tmp = integrator.borrow_scratch();
 
-        for (size_t q = 0; q < view.order(); ++q) {
+        GLIntegrator::invoke(view.order(), [&](size_t q, int ln){
             auto [w_q, x_q] = view[q];
 
             double shift = x_q - 1.0;
@@ -349,8 +345,7 @@ namespace Magnus::VJP {
             integrator.prefix_vjp(barY, dt);
 
             dA.add(barY);
-        }
-
+        });
     }
 
 

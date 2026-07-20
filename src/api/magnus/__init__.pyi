@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Any, Callable, Literal, overload
 
-from ._generated_typing import IntegratorName, KernelOpName, MatrixBackendName, NumericBackendName
+from ._generated_typing import GLBackendName, IntegratorName, KernelOpName, MatrixBackendName, NumericBackendName
 
 def max_order() -> int:
     """Specifies the current max Legendre-Gauss degree available."""
@@ -11,6 +11,8 @@ def numeric_backends() -> tuple[NumericBackendName, ...]: ...
 def matrix_backends() -> tuple[MatrixBackendName, ...]: ...
 
 def integrators() -> tuple[IntegratorName, ...]: ...
+
+def gl_backends() -> tuple[GLBackendName, ...]: ...
 
 def ops() -> tuple[KernelOpName, ...]: ...
 
@@ -32,6 +34,7 @@ def compute(
     vectorized: bool = True,
     matrix_backend: MatrixBackendName = "Auto",
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     record_vjp: Literal[False] = False,
 ) -> np.ndarray:
     """
@@ -51,6 +54,7 @@ def compute(
     vectorized: bool = True,
     matrix_backend: MatrixBackendName = "Auto",
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     record_vjp: Literal[True],
 ) -> tuple[np.ndarray, np.ndarray]: ...
 
@@ -67,6 +71,7 @@ def compute(
     vectorized: bool = True,
     matrix_backend: MatrixBackendName = "Auto",
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     record_vjp: bool,
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray]: ...
 
@@ -82,6 +87,7 @@ def compute_sc(
     dtype: Any = None,
     vectorized: bool = True,
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     record_vjp: Literal[False] = False,
 ) -> np.ndarray:
     """
@@ -100,6 +106,7 @@ def compute_sc(
     dtype: Any = None,
     vectorized: bool = True,
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     record_vjp: Literal[True],
 ) -> tuple[np.ndarray, np.ndarray]: ...
 
@@ -115,6 +122,7 @@ def compute_sc(
     dtype: Any = None,
     vectorized: bool = True,
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     record_vjp: bool,
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray]: ...
 

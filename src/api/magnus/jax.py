@@ -9,7 +9,7 @@ import numpy as np
 from . import _core
 
 if TYPE_CHECKING:
-    from ._generated_typing import IntegratorName, KernelOpName, MatrixBackendName
+    from ._generated_typing import GLBackendName, IntegratorName, KernelOpName, MatrixBackendName
 
 try:
     import jax
@@ -75,6 +75,7 @@ def _matrix_call(
     tf: float,
     matrix_backend: MatrixBackendName,
     integrator: IntegratorName,
+    gl_backend: GLBackendName,
     record_vjp: bool,
 ):
     register_ffi_targets()
@@ -95,6 +96,7 @@ def _matrix_call(
             tf=float(tf),
             matrix_backend=matrix_backend,
             integrator=integrator,
+            gl_backend=gl_backend,
         )
 
     call = jax.ffi.ffi_call("magnus_matrix", _matrix_output_type(op, n, data))
@@ -106,6 +108,7 @@ def _matrix_call(
         tf=float(tf),
         matrix_backend=matrix_backend,
         integrator=integrator,
+        gl_backend=gl_backend,
     )
 
 
@@ -116,6 +119,7 @@ def _spacecurve_call(
     t0: float,
     tf: float,
     integrator: IntegratorName,
+    gl_backend: GLBackendName,
     record_vjp: bool,
 ):
     register_ffi_targets()
@@ -135,6 +139,7 @@ def _spacecurve_call(
             t0=float(t0),
             tf=float(tf),
             integrator=integrator,
+            gl_backend=gl_backend,
         )
 
     call = jax.ffi.ffi_call("magnus_spacecurve", _spacecurve_output_type(op, n, data))
@@ -145,6 +150,7 @@ def _spacecurve_call(
         t0=float(t0),
         tf=float(tf),
         integrator=integrator,
+        gl_backend=gl_backend,
     )
 
 
@@ -208,14 +214,15 @@ def _matrix_fwd(
     tf: float,
     matrix_backend: MatrixBackendName,
     integrator: IntegratorName,
+    gl_backend: GLBackendName,
     record_vjp: bool,
 ):
     data = jnp.asarray(data)
     if record_vjp:
-        out, carry = _matrix_call(op, n, data, t0, tf, matrix_backend, integrator, True)
+        out, carry = _matrix_call(op, n, data, t0, tf, matrix_backend, integrator, gl_backend, True)
         return (out, jax.lax.stop_gradient(carry)), (data, carry)
 
-    out = _matrix_call(op, n, data, t0, tf, matrix_backend, integrator, False)
+    out = _matrix_call(op, n, data, t0, tf, matrix_backend, integrator, gl_backend, False)
     return out, (data,)
 
 
@@ -226,18 +233,19 @@ def _spacecurve_fwd(
     t0: float,
     tf: float,
     integrator: IntegratorName,
+    gl_backend: GLBackendName,
     record_vjp: bool,
 ):
     data = jnp.asarray(data)
     if record_vjp:
-        out, carry = _spacecurve_call(op, n, data, t0, tf, integrator, True)
+        out, carry = _spacecurve_call(op, n, data, t0, tf, integrator, gl_backend, True)
         return (out, jax.lax.stop_gradient(carry)), (data, carry)
 
-    out = _spacecurve_call(op, n, data, t0, tf, integrator, False)
+    out = _spacecurve_call(op, n, data, t0, tf, integrator, gl_backend, False)
     return out, (data,)
 
 
-@partial(jax.custom_vjp, nondiff_argnums=(1, 2, 3, 4, 5, 6, 7))
+@partial(jax.custom_vjp, nondiff_argnums=(1, 2, 3, 4, 5, 6, 7, 8))
 def _matrix_custom(
     data: Any,
     op: KernelOpName,
@@ -246,9 +254,10 @@ def _matrix_custom(
     tf: float,
     matrix_backend: MatrixBackendName,
     integrator: IntegratorName,
+    gl_backend: GLBackendName,
     record_vjp: bool,
 ):
-    return _matrix_call(op, n, data, t0, tf, matrix_backend, integrator, record_vjp)
+    return _matrix_call(op, n, data, t0, tf, matrix_backend, integrator, gl_backend, record_vjp)
 
 
 def _matrix_bwd(
@@ -258,6 +267,7 @@ def _matrix_bwd(
     tf: float,
     matrix_backend: MatrixBackendName,
     integrator: IntegratorName,
+    gl_backend: GLBackendName,
     record_vjp: bool,
     residuals: tuple[Any, ...],
     cotangent: Any,
@@ -285,7 +295,7 @@ def _matrix_bwd(
 _matrix_custom.defvjp(_matrix_fwd, _matrix_bwd)
 
 
-@partial(jax.custom_vjp, nondiff_argnums=(1, 2, 3, 4, 5, 6))
+@partial(jax.custom_vjp, nondiff_argnums=(1, 2, 3, 4, 5, 6, 7))
 def _spacecurve_custom(
     data: Any,
     op: KernelOpName,
@@ -293,9 +303,10 @@ def _spacecurve_custom(
     t0: float,
     tf: float,
     integrator: IntegratorName,
+    gl_backend: GLBackendName,
     record_vjp: bool,
 ):
-    return _spacecurve_call(op, n, data, t0, tf, integrator, record_vjp)
+    return _spacecurve_call(op, n, data, t0, tf, integrator, gl_backend, record_vjp)
 
 
 def _spacecurve_bwd(
@@ -304,6 +315,7 @@ def _spacecurve_bwd(
     t0: float,
     tf: float,
     integrator: IntegratorName,
+    gl_backend: GLBackendName,
     record_vjp: bool,
     residuals: tuple[Any, ...],
     cotangent: Any,
@@ -369,9 +381,10 @@ def _compute_sampled(
     op: KernelOpName = "sum",
     matrix_backend: MatrixBackendName = "Auto",
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     record_vjp: bool = False,
 ):
-    return _matrix_custom(data, op, n, t0, tf, matrix_backend, integrator, record_vjp)
+    return _matrix_custom(data, op, n, t0, tf, matrix_backend, integrator, gl_backend, record_vjp)
 
 
 def _compute_sc_sampled(
@@ -382,9 +395,10 @@ def _compute_sc_sampled(
     *,
     op: KernelOpName = "sum",
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     record_vjp: bool = False,
 ):
-    return _spacecurve_custom(data, op, n, t0, tf, integrator, record_vjp)
+    return _spacecurve_custom(data, op, n, t0, tf, integrator, gl_backend, record_vjp)
 
 
 def compute(
@@ -399,6 +413,7 @@ def compute(
     vectorized: bool = True,
     matrix_backend: MatrixBackendName = "Auto",
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     record_vjp: bool = False,
 ):
     """Return the Magnus output and, when requested, its saved forward carry."""
@@ -418,6 +433,7 @@ def compute(
         op=op,
         matrix_backend=matrix_backend,
         integrator=integrator,
+        gl_backend=gl_backend,
         record_vjp=record_vjp,
     )
 
@@ -433,6 +449,7 @@ def compute_sc(
     dtype: Any = None,
     vectorized: bool = True,
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     record_vjp: bool = False,
 ):
     """Return the SpaceCurve Magnus output and, when requested, its saved forward carry."""
@@ -451,6 +468,7 @@ def compute_sc(
         tf,
         op=op,
         integrator=integrator,
+        gl_backend=gl_backend,
         record_vjp=record_vjp,
     )
 

@@ -45,6 +45,7 @@ void write_typing_file(std::ostream& out) {
     emit_literal_alias<Magnus::NumBackends>(out, "NumericBackendName");
     emit_literal_alias<Magnus::MatrixBackends>(out, "MatrixBackendName", true);
     emit_literal_alias<Magnus::IntegratorBackends>(out, "IntegratorName", true);
+    emit_literal_alias<Magnus::GLBackends>(out, "GLBackendName", true);
     emit_literal_alias_from_names(out, "KernelOpName", Magnus::Dispatch::kernel_op_names);
 }
 

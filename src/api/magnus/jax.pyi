@@ -1,6 +1,6 @@
 from typing import Any, Callable, Literal, overload
 
-from ._generated_typing import IntegratorName, KernelOpName, MatrixBackendName
+from ._generated_typing import GLBackendName, IntegratorName, KernelOpName, MatrixBackendName
 
 def register_ffi_targets() -> None: ...
 
@@ -17,6 +17,7 @@ def compute(
     vectorized: bool = True,
     matrix_backend: MatrixBackendName = "Auto",
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     record_vjp: Literal[False] = False,
 ) -> Any: ...
 
@@ -33,6 +34,7 @@ def compute(
     vectorized: bool = True,
     matrix_backend: MatrixBackendName = "Auto",
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     record_vjp: Literal[True],
 ) -> tuple[Any, Any]: ...
 
@@ -49,6 +51,7 @@ def compute(
     vectorized: bool = True,
     matrix_backend: MatrixBackendName = "Auto",
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     record_vjp: bool,
 ) -> Any | tuple[Any, Any]: ...
 
@@ -64,6 +67,7 @@ def compute_sc(
     dtype: Any = None,
     vectorized: bool = True,
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     record_vjp: Literal[False] = False,
 ) -> Any: ...
 
@@ -79,6 +83,7 @@ def compute_sc(
     dtype: Any = None,
     vectorized: bool = True,
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     record_vjp: Literal[True],
 ) -> tuple[Any, Any]: ...
 
@@ -94,5 +99,6 @@ def compute_sc(
     dtype: Any = None,
     vectorized: bool = True,
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     record_vjp: bool,
 ) -> Any | tuple[Any, Any]: ...

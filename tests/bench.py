@@ -76,7 +76,7 @@ def median_runtime(fn, repeats=7):
     return float(np.median(times)), result
 
 T = 1
-n_samples = 101
+n_samples = 4097
 ivp_time, ivp_res = median_runtime(
     lambda: solve_matrix_ivp_at(Y, T, rtol=1e-12, atol=1e-14)
 )

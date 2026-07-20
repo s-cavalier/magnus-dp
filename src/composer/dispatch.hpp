@@ -3,12 +3,17 @@
 #include "grad.hpp"
 #include "graddata.hpp"
 #include "magnus.hpp"
-#include "util/memorybuffer.hpp"
+#include <memory_resource>
 #include <optional>
 #include <string_view>
 #include <variant>
 
 namespace Magnus {
+
+    template <class T>
+    using api_allocator_t = std::pmr::polymorphic_allocator<T>;
+
+    using api_erased_allocator_t = std::pmr::polymorphic_allocator<std::byte>;
     
     using f32 = float;
     using f64 = double;
@@ -295,64 +300,90 @@ namespace Dispatch {
         throw std::invalid_argument( "could not deduce kernel op from str in Magnus::Dispatch::op_from_str(std::string_view)" );
     }
 
-    template <Integrator Int, bool RecordVJP>
-    void one( Params& p, const typename Int::allocator_t& alloc = typename Int::allocator_t() ) {
+    template <Integrator Int, class GLIntegrator, bool RecordVJP>
+    void one(
+        Params& p,
+        const api_allocator_t<typename Int::numeric_t>& alloc = api_allocator_t<typename Int::numeric_t>()
+    ) {
         using numeric_t = typename Int::numeric_t;
         using matrix_t = typename Int::matrix_t;
         using matrix_span_t = typename Int::matrix_span_t;
+
+        typename Int::allocator_t typed_alloc(alloc.resource());
 
         DefaultData<numeric_t>& data = std::get<DefaultData<numeric_t>>(p.data);
         matrix_t out( data.out, p.dim );
         matrix_span_t in( data.in, p.dim, p.samples );
 
         auto recorder = make_vjp_recorder<RecordVJP, Int>(p);
-        Magnus::one<Int>(out, p.n, in, p.t0, p.tf, recorder, alloc);
+        Magnus::one<Int, decltype(recorder), GLIntegrator>(
+            out, p.n, in, p.t0, p.tf, recorder, typed_alloc
+        );
     }
 
-    template <Integrator Int, bool RecordVJP>
-    void many( Params& p, const typename Int::allocator_t& alloc = typename Int::allocator_t() ) {
+    template <Integrator Int, class GLIntegrator, bool RecordVJP>
+    void many(
+        Params& p,
+        const api_allocator_t<typename Int::numeric_t>& alloc = api_allocator_t<typename Int::numeric_t>()
+    ) {
         using numeric_t = typename Int::numeric_t;
         using matrix_t = typename Int::matrix_t;
         using matrix_span_t = typename Int::matrix_span_t;
+
+        typename Int::allocator_t typed_alloc(alloc.resource());
 
         DefaultData<numeric_t>& data = std::get<DefaultData<numeric_t>>(p.data);
         matrix_span_t out( data.out, p.dim, p.n );
         matrix_span_t in( data.in, p.dim, p.samples );
 
         auto recorder = make_vjp_recorder<RecordVJP, Int>(p);
-        Magnus::many<Int>(out, in, p.t0, p.tf, recorder, alloc);
+        Magnus::many<Int, decltype(recorder), GLIntegrator>(
+            out, in, p.t0, p.tf, recorder, typed_alloc
+        );
     }
 
-    template <Integrator Int, bool RecordVJP>
-    void sum( Params& p, const typename Int::allocator_t& alloc = typename Int::allocator_t()  ) {
+    template <Integrator Int, class GLIntegrator, bool RecordVJP>
+    void sum(
+        Params& p,
+        const api_allocator_t<typename Int::numeric_t>& alloc = api_allocator_t<typename Int::numeric_t>()
+    ) {
         using numeric_t = typename Int::numeric_t;
         using matrix_t = typename Int::matrix_t;
         using matrix_span_t = typename Int::matrix_span_t;
+
+        typename Int::allocator_t typed_alloc(alloc.resource());
 
         DefaultData<numeric_t>& data = std::get<DefaultData<numeric_t>>(p.data);
         matrix_t out( data.out, p.dim );
         matrix_span_t in( data.in, p.dim, p.samples );
 
         auto recorder = make_vjp_recorder<RecordVJP, Int>(p);
-        Magnus::sum<Int>(out, p.n, in, p.t0, p.tf, recorder, alloc);
+        Magnus::sum<Int, decltype(recorder), GLIntegrator>(
+            out, p.n, in, p.t0, p.tf, recorder, typed_alloc
+        );
     }
 }
-    template <class Allocator>
-    using kernel_dispatch_t = void(*)(Params&, const Allocator&);
+    template <class NumT>
+    using kernel_dispatch_t = void(*)(Params&, const api_allocator_t<NumT>&);
 
-    template <Integrator Int, bool RecordVJP>
-    inline constexpr std::array< kernel_dispatch_t<typename Int::allocator_t>, 3> kernels{ 
-        &Dispatch::one<Int, RecordVJP>, 
-        &Dispatch::many<Int, RecordVJP>, 
-        &Dispatch::sum<Int, RecordVJP> 
+    template <Integrator Int, class GLIntegrator, bool RecordVJP>
+    inline constexpr std::array<kernel_dispatch_t<typename Int::numeric_t>, 3> kernels{
+        &Dispatch::one<Int, GLIntegrator, RecordVJP>,
+        &Dispatch::many<Int, GLIntegrator, RecordVJP>,
+        &Dispatch::sum<Int, GLIntegrator, RecordVJP>
     };
 
 namespace Dispatch {
     template <Integrator Int>
-    void one_vjp(VJPParams& p, const typename Int::allocator_t& alloc = typename Int::allocator_t()) {
+    void one_vjp(
+        VJPParams& p,
+        const api_allocator_t<typename Int::numeric_t>& alloc = api_allocator_t<typename Int::numeric_t>()
+    ) {
         using NumT = typename Int::numeric_t;
         using MatrixT = typename Int::matrix_t;
         using SpanT = typename Int::matrix_span_t;
+
+        typename Int::allocator_t typed_alloc(alloc.resource());
 
         auto& buffers = std::get<VJPData<NumT>>(p.data);
         SpanT dA(buffers.out, p.dim, p.samples);
@@ -360,13 +391,18 @@ namespace Dispatch {
         SpanT A(buffers.in, p.dim, p.samples);
         auto carry = p.template make_vjp_carry<NumT>();
 
-        VJP::one<Int>(dA, dOut, p.n, A, p.t0, p.tf, carry ? &*carry : nullptr, alloc);
+        VJP::one<Int>(dA, dOut, p.n, A, p.t0, p.tf, carry ? &*carry : nullptr, typed_alloc);
     }
 
     template <Integrator Int>
-    void many_vjp(VJPParams& p, const typename Int::allocator_t& alloc = typename Int::allocator_t()) {
+    void many_vjp(
+        VJPParams& p,
+        const api_allocator_t<typename Int::numeric_t>& alloc = api_allocator_t<typename Int::numeric_t>()
+    ) {
         using NumT = typename Int::numeric_t;
         using SpanT = typename Int::matrix_span_t;
+
+        typename Int::allocator_t typed_alloc(alloc.resource());
 
         auto& buffers = std::get<VJPData<NumT>>(p.data);
         SpanT dA(buffers.out, p.dim, p.samples);
@@ -374,14 +410,19 @@ namespace Dispatch {
         SpanT A(buffers.in, p.dim, p.samples);
         auto carry = p.template make_vjp_carry<NumT>();
 
-        VJP::many<Int>(dA, dOut, A, p.t0, p.tf, carry ? &*carry : nullptr, alloc);
+        VJP::many<Int>(dA, dOut, A, p.t0, p.tf, carry ? &*carry : nullptr, typed_alloc);
     }
 
     template <Integrator Int>
-    void sum_vjp(VJPParams& p, const typename Int::allocator_t& alloc = typename Int::allocator_t()) {
+    void sum_vjp(
+        VJPParams& p,
+        const api_allocator_t<typename Int::numeric_t>& alloc = api_allocator_t<typename Int::numeric_t>()
+    ) {
         using NumT = typename Int::numeric_t;
         using MatrixT = typename Int::matrix_t;
         using SpanT = typename Int::matrix_span_t;
+
+        typename Int::allocator_t typed_alloc(alloc.resource());
 
         auto& buffers = std::get<VJPData<NumT>>(p.data);
         SpanT dA(buffers.out, p.dim, p.samples);
@@ -389,15 +430,14 @@ namespace Dispatch {
         SpanT A(buffers.in, p.dim, p.samples);
         auto carry = p.template make_vjp_carry<NumT>();
 
-        VJP::sum<Int>(dA, dOut, p.n, A, p.t0, p.tf, carry ? &*carry : nullptr, alloc);
+        VJP::sum<Int>(dA, dOut, p.n, A, p.t0, p.tf, carry ? &*carry : nullptr, typed_alloc);
     }
 }
-
-    template <class Allocator>
-    using vjp_kernel_dispatch_t = void(*)(VJPParams&, const Allocator&);
+    template <class NumT>
+    using vjp_kernel_dispatch_t = void(*)(VJPParams&, const api_allocator_t<NumT>&);
 
     template <Integrator Int>
-    inline constexpr std::array<vjp_kernel_dispatch_t<typename Int::allocator_t>, 3> vjp_kernels{
+    inline constexpr std::array<vjp_kernel_dispatch_t<typename Int::numeric_t>, 3> vjp_kernels{
         &Dispatch::one_vjp<Int>,
         &Dispatch::many_vjp<Int>,
         &Dispatch::sum_vjp<Int>
@@ -406,89 +446,48 @@ namespace Dispatch {
     struct KernelPlan {
         virtual ~KernelPlan() = default;
         virtual size_t divisibility_requirement() const = 0;
-        virtual void run() = 0;
+        virtual void run(
+            const api_erased_allocator_t& alloc = api_erased_allocator_t()
+        ) = 0;
     };
 
     template <Integrator Int>
     class TypedKernelPlan final : public KernelPlan {
         Params p;
-        kernel_dispatch_t<typename Int::allocator_t> kernel_ptr;
+        kernel_dispatch_t<typename Int::numeric_t> kernel_ptr;
     
     public:
         explicit TypedKernelPlan(
             Params params, 
-            kernel_dispatch_t<typename Int::allocator_t> kernel_ptr
+            kernel_dispatch_t<typename Int::numeric_t> kernel_ptr
         ) : p( std::move(params) ), kernel_ptr(kernel_ptr) {}
 
         size_t divisibility_requirement() const override {
             return Int::divisibility_requirement();
         }
 
-        static size_t required_bytes(const Params& p) {
-            size_t matrix_size = p.dim * p.dim;
-            size_t scalar_count = 0;
-            scalar_count += Int::memory_requirement() * matrix_size;
-
-            // Internal Y buffer plus a copied Y[last] buffer allocated by Magnus::one/many/sum only when n > 1.
-            if (p.n > 1) scalar_count += (p.samples + 1) * matrix_size;
-
-            static constexpr size_t SCRATCH = 512;
-            return scalar_count * sizeof(typename Int::numeric_t) + SCRATCH;
-        }
-
-        void run() override {
-            using NumT = typename Int::numeric_t;
-
-            MemoryBuffer memory( required_bytes(p) );
-            auto alloc = memory.get_allocator<NumT>();
-
-            kernel_ptr(p, alloc);
+        void run(const api_erased_allocator_t& alloc) override {
+            kernel_ptr(p, api_allocator_t<typename Int::numeric_t>(alloc.resource()));
         }
     };
 
     template <Integrator Int>
     class TypedVJPKernelPlan final : public KernelPlan {
         VJPParams p;
-        vjp_kernel_dispatch_t<typename Int::allocator_t> kernel_ptr;
+        vjp_kernel_dispatch_t<typename Int::numeric_t> kernel_ptr;
 
     public:
         explicit TypedVJPKernelPlan(
             VJPParams params,
-            vjp_kernel_dispatch_t<typename Int::allocator_t> kernel_ptr
+            vjp_kernel_dispatch_t<typename Int::numeric_t> kernel_ptr
         ) : p(std::move(params)), kernel_ptr(kernel_ptr) {}
 
         size_t divisibility_requirement() const override {
             return Int::divisibility_requirement();
         }
 
-        static size_t required_bytes(const VJPParams& p) {
-            using NumT = typename Int::numeric_t;
-
-            size_t matrix_size = p.dim * p.dim;
-            size_t scalar_count = Int::memory_requirement() * matrix_size;
-
-            if (p.n > 1) {
-                scalar_count += p.samples * matrix_size;
-
-                const auto& buffers = std::get<VJPData<NumT>>(p.data);
-                if (buffers.carry == nullptr) {
-                    scalar_count += Int::memory_requirement() * matrix_size;
-                    scalar_count += gl_max_n(p.n) * total_orders(p.n) * p.samples * matrix_size;
-                    scalar_count += (p.samples + 1) * matrix_size;
-                }
-            }
-
-            static constexpr size_t SCRATCH = 512;
-            return scalar_count * sizeof(NumT) + SCRATCH;
-        }
-
-        void run() override {
-            using NumT = typename Int::numeric_t;
-
-            MemoryBuffer memory(required_bytes(p));
-            auto alloc = memory.get_allocator<NumT>();
-
-            kernel_ptr(p, alloc);
+        void run(const api_erased_allocator_t& alloc) override {
+            kernel_ptr(p, api_allocator_t<typename Int::numeric_t>(alloc.resource()));
         }
     };
 
