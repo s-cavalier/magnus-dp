@@ -237,6 +237,7 @@ def test_public_api_exports_only_compute_entrypoints():
         "numeric_backends",
         "matrix_backends",
         "integrators",
+        "gl_backends",
         "ops",
         "replace_gl_table",
         "compute",
@@ -272,6 +273,10 @@ def test_dispatch_metadata_is_discoverable():
     assert "Auto" in magnus.matrix_backends()
     assert "Riemann" in magnus.integrators()
     assert "Auto" in magnus.integrators()
+    assert "serial" in magnus.gl_backends()
+    assert "openmp" in magnus.gl_backends()
+    assert "threadpool" in magnus.gl_backends()
+    assert "Auto" in magnus.gl_backends()
     assert "float" in magnus.numeric_backends()
     assert "double" in magnus.numeric_backends()
     assert "Auto" not in magnus.numeric_backends()
@@ -290,6 +295,74 @@ def test_matrix_compute_ops_and_shapes():
     assert total.shape == (2, 2)
     np.testing.assert_allclose(one, many[3], rtol=1e-11, atol=1e-12)
     np.testing.assert_allclose(total, np.sum(many, axis=0), rtol=1e-11, atol=1e-12)
+
+
+def test_gl_backend_dispatch_and_auto_selection():
+    small_samples = 33
+    large_samples = 1025
+
+    serial_small = magnus.compute(
+        4,
+        matrix_values,
+        0.0,
+        1.0,
+        small_samples,
+        integrator="Boole",
+        gl_backend="serial",
+    )
+    auto_small = magnus.compute(
+        4,
+        matrix_values,
+        0.0,
+        1.0,
+        small_samples,
+        integrator="Boole",
+        gl_backend="Auto",
+    )
+    np.testing.assert_array_equal(auto_small, serial_small)
+
+    parallel_large, parallel_carry = magnus.compute(
+        8,
+        matrix_values,
+        0.0,
+        1.0,
+        large_samples,
+        integrator="Boole",
+        gl_backend="openmp",
+        record_vjp=True,
+    )
+    auto_large, auto_carry = magnus.compute(
+        8,
+        matrix_values,
+        0.0,
+        1.0,
+        large_samples,
+        integrator="Boole",
+        gl_backend="Auto",
+        record_vjp=True,
+    )
+    np.testing.assert_array_equal(auto_large, parallel_large)
+    np.testing.assert_array_equal(auto_carry, parallel_carry)
+
+    serial_sc = magnus.compute_sc(
+        8,
+        spacecurve_values,
+        0.0,
+        1.0,
+        small_samples,
+        integrator="Boole",
+        gl_backend="serial",
+    )
+    parallel_sc = magnus.compute_sc(
+        8,
+        spacecurve_values,
+        0.0,
+        1.0,
+        small_samples,
+        integrator="Boole",
+        gl_backend="openmp",
+    )
+    np.testing.assert_allclose(parallel_sc, serial_sc, rtol=1e-12, atol=1e-12)
 
 
 def test_matrix_vectorized_and_pointwise_sampling_match():
@@ -702,6 +775,9 @@ def test_dispatch_kwargs_are_forwarded():
 
     with pytest.raises(ValueError, match="dispatch name"):
         magnus.compute(1, f, 0.0, 1.0, 9, op="one", integrator="Missing")
+
+    with pytest.raises(ValueError, match="dispatch name"):
+        magnus.compute(1, f, 0.0, 1.0, 9, op="one", gl_backend="Missing")
 
     with pytest.raises(ValueError, match="deduce kernel op"):
         magnus.compute(1, f, 0.0, 1.0, 9, op="missing")
