@@ -13,9 +13,10 @@ This library is designed for numerical integration of these terms, supporting mu
 ## Requirements & Building
 
 ### Requirements
-- **CMake** (version 3.16+)
+- **CMake** (version 3.20+)
 - **C++ Compiler** supporting C++23 (e.g., GCC 11+, Clang 13+)
-- **BLAS** & **TBB** libraries (for multi-threaded matrix operations)
+- **MKL** or a **CBLAS** implementation such as OpenBLAS, plus **TBB**
+  (for multi-threaded matrix operations)
 - **Python 3** with development headers
 - **NumPy**
 - **JAX** (Optional, for JAX CPU FFI functionality)

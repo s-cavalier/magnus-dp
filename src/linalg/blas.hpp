@@ -1,7 +1,7 @@
 #ifndef __LINALG_BLAS_HPP__
 #define __LINALG_BLAS_HPP__
 #include "generic.hpp"
-#include <mkl.h>
+#include <cblas.h>
 #include <execution>
 
 namespace Magnus {

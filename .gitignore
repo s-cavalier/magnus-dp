@@ -8,3 +8,5 @@ build
 **/*.so
 
 magnus
+
+compile_commands.json

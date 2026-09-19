@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.20)
 
 project(magnus LANGUAGES CXX)
 
@@ -17,6 +17,28 @@ set(MAGNUS_GL_MAX_ORDER 64 CACHE STRING "Maximum generated Gauss-Legendre order"
 
 set(MAGNUS_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/magnus")
 set(MAGNUS_GENERATED_TYPING_FILE "${CMAKE_CURRENT_BINARY_DIR}/_generated_typing.pyi")
+
+set(MAGNUS_POET_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/extern/poet"
+    CACHE PATH "Path to the POET git submodule"
+)
+
+if(NOT EXISTS "${MAGNUS_POET_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR
+        "POET submodule not found at ${MAGNUS_POET_DIR}. "
+        "Run: git submodule update --init --recursive"
+    )
+endif()
+
+set(POET_BUILD_TESTS OFF CACHE BOOL "Build POET tests" FORCE)
+set(POET_BUILD_EXAMPLES OFF CACHE BOOL "Build POET examples" FORCE)
+set(POET_BUILD_BENCHMARKS OFF CACHE BOOL "Build POET benchmarks" FORCE)
+set(POET_BUILD_DEVEL OFF CACHE BOOL "Build POET development utilities" FORCE)
+add_subdirectory(
+    "${MAGNUS_POET_DIR}"
+    "${CMAKE_CURRENT_BINARY_DIR}/extern/poet"
+    EXCLUDE_FROM_ALL
+)
 
 add_custom_target(magnus_package_stage
     COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -67,7 +89,7 @@ set_source_files_properties(
 target_compile_features(magnus_core PUBLIC cxx_std_23)
 target_compile_options(magnus_core PUBLIC -O3 -march=native)
 target_include_directories(magnus_core PUBLIC src)
-target_link_libraries(magnus_core PUBLIC BLAS::BLAS TBB::tbb)
+target_link_libraries(magnus_core PUBLIC BLAS::BLAS TBB::tbb poet::poet)
 target_link_libraries(magnus_core PUBLIC atomic)
 
 if(OpenMP_CXX_FOUND)
