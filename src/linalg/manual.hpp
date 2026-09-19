@@ -6,11 +6,19 @@ namespace Magnus {
 
     template <class NumT>
     void manual_matmul( size_t dim, const NumT* MAGNUS_RESTRICT a, const NumT* MAGNUS_RESTRICT b, NumT* MAGNUS_RESTRICT out ) {
-        for (size_t i = 0; i < dim; ++i) {
-            for (size_t j = 0; j < dim; ++j) {
-                out[i * dim + j] = 0;
+        if (dim == 0) return;
 
-                for (size_t k = 0; k < dim; ++k) out[i * dim + j] += a[i * dim + k] * b[k * dim + j];
+        for (size_t i = 0; i < dim; ++i) {
+            NumT* MAGNUS_RESTRICT out_row = out + i * dim;
+            const NumT a_i0 = a[i * dim];
+
+            for (size_t j = 0; j < dim; ++j) out_row[j] = a_i0 * b[j];
+
+            for (size_t k = 1; k < dim; ++k) {
+                const NumT a_ik = a[i * dim + k];
+                const NumT* MAGNUS_RESTRICT b_row = b + k * dim;
+
+                for (size_t j = 0; j < dim; ++j) out_row[j] += a_ik * b_row[j];
             }
         }
     }
@@ -32,11 +40,19 @@ namespace Magnus {
             }
         }
 
+        if (dim == 0) return;
+
         for (size_t k = 0; k < dim; ++k) {
-            for (size_t j = 0; j < dim; ++j) {
-                NumT value = NumT{0};
-                for (size_t i = 0; i < dim; ++i) value += a[i * dim + k] * dout[i * dim + j];
-                db[k * dim + j] = value;
+            NumT* MAGNUS_RESTRICT db_row = db + k * dim;
+            const NumT a_0k = a[k];
+
+            for (size_t j = 0; j < dim; ++j) db_row[j] = a_0k * dout[j];
+
+            for (size_t i = 1; i < dim; ++i) {
+                const NumT a_ik = a[i * dim + k];
+                const NumT* MAGNUS_RESTRICT dout_row = dout + i * dim;
+
+                for (size_t j = 0; j < dim; ++j) db_row[j] += a_ik * dout_row[j];
             }
         }
     }
