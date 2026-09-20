@@ -40,6 +40,28 @@ add_subdirectory(
     EXCLUDE_FROM_ALL
 )
 
+set(MAGNUS_XSIMD_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/extern/xsimd"
+    CACHE PATH "Path to the xsimd git submodule"
+)
+
+if(NOT EXISTS "${MAGNUS_XSIMD_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR
+        "xsimd submodule not found at ${MAGNUS_XSIMD_DIR}. "
+        "Run: git submodule update --init --recursive"
+    )
+endif()
+
+set(BUILD_TESTS OFF CACHE BOOL "Build xsimd tests" FORCE)
+set(BUILD_BENCHMARK OFF CACHE BOOL "Build xsimd benchmarks" FORCE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "Build xsimd examples" FORCE)
+set(XSIMD_SKIP_INSTALL ON CACHE BOOL "Skip installing vendored xsimd" FORCE)
+add_subdirectory(
+    "${MAGNUS_XSIMD_DIR}"
+    "${CMAKE_CURRENT_BINARY_DIR}/extern/xsimd"
+    EXCLUDE_FROM_ALL
+)
+
 add_custom_target(magnus_package_stage
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_CURRENT_SOURCE_DIR}/src/api/magnus"
@@ -87,9 +109,15 @@ set_source_files_properties(
 )
 
 target_compile_features(magnus_core PUBLIC cxx_std_23)
-target_compile_options(magnus_core PUBLIC -O3 -march=native)
+target_compile_options(magnus_core PUBLIC
+    -O3
+    -march=native
+    -mtune=native
+    $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-fcx-limited-range>
+    $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-fno-signed-zeros>
+)
 target_include_directories(magnus_core PUBLIC src)
-target_link_libraries(magnus_core PUBLIC BLAS::BLAS TBB::tbb poet::poet)
+target_link_libraries(magnus_core PUBLIC BLAS::BLAS TBB::tbb poet::poet xsimd::xsimd)
 target_link_libraries(magnus_core PUBLIC atomic)
 
 if(OpenMP_CXX_FOUND)

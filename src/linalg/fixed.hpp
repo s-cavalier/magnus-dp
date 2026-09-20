@@ -7,6 +7,24 @@
 namespace Magnus {
 
     template <class NumT, size_t Dim>
+    struct FixedDimLinearCombination {
+        template <std::same_as<std::pair<double, const NumT* MAGNUS_RESTRICT>>... Terms>
+        MAGNUS_ALWAYS_INLINE static void invoke(
+            [[maybe_unused]] size_t dim,
+            NumT* MAGNUS_RESTRICT destination,
+            double destination_coefficient,
+            Terms&&... terms
+        ) {
+            const auto destination_scalar = scalar_as_num<NumT>(destination_coefficient);
+            poet::static_for<Dim * Dim>([&] [[gnu::always_inline]] (auto I) {
+                NumT value = destination[I] * destination_scalar;
+                ((value += terms.second[I] * scalar_as_num<NumT>(terms.first)), ...);
+                destination[I] = value;
+            });
+        }
+    };
+
+    template <class NumT, size_t Dim>
     void fixed_dim_matmul(
         [[maybe_unused]] size_t dim,
         const NumT* MAGNUS_RESTRICT a,
@@ -212,6 +230,7 @@ namespace Magnus {
         fixed_dim_matzero<NumT, Dim>,
         fixed_dim_matwzero<NumT, Dim>,
         fixed_dim_matwadd<NumT, Dim>,
+        FixedDimLinearCombination<NumT, Dim>,
         fixed_dim_sample_update<NumT, Dim>,
         fixed_dim_sample_update_vjp<NumT, Dim>
     >;

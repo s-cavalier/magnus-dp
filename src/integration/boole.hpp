@@ -39,34 +39,38 @@ namespace Magnus {
                 matrix_t base = A[start];
 
                 f1.copy_from(A[start + 1]);
-                A[start + 1]
-                    .scale(dt / 2)
-                    .add(f0, dt / 2)
-                    .add(base);
+                A[start + 1].linear_combination(
+                    dt / 2,
+                    f0.term(dt / 2),
+                    base.term(1.0)
+                );
 
                 f2.copy_from(A[start + 2]);
-                A[start + 2]
-                    .scale(dt / 3)
-                    .add(f0, dt / 3)
-                    .add(f1, 4 * dt / 3)
-                    .add(base);
+                A[start + 2].linear_combination(
+                    dt / 3,
+                    f0.term(dt / 3),
+                    f1.term(4 * dt / 3),
+                    base.term(1.0)
+                );
 
                 f3.copy_from(A[start + 3]);
-                A[start + 3]
-                    .scale(3 * dt / 8)
-                    .add(f0, 3 * dt / 8)
-                    .add(f1, 9 * dt / 8)
-                    .add(f2, 9 * dt / 8)
-                    .add(base);
+                A[start + 3].linear_combination(
+                    3 * dt / 8,
+                    f0.term(3 * dt / 8),
+                    f1.term(9 * dt / 8),
+                    f2.term(9 * dt / 8),
+                    base.term(1.0)
+                );
 
                 f4.copy_from(A[start + 4]);
-                A[start + 4]
-                    .scale(14 * dt / 45)
-                    .add(f0, 14 * dt / 45)
-                    .add(f1, 64 * dt / 45)
-                    .add(f2, 24 * dt / 45)
-                    .add(f3, 64 * dt / 45)
-                    .add(base);
+                A[start + 4].linear_combination(
+                    14 * dt / 45,
+                    f0.term(14 * dt / 45),
+                    f1.term(64 * dt / 45),
+                    f2.term(24 * dt / 45),
+                    f3.term(64 * dt / 45),
+                    base.term(1.0)
+                );
 
                 f0.copy_from(f4);
                 start += 4;
@@ -80,28 +84,40 @@ namespace Magnus {
             size_t boole_intervals = intervals - intervals % 4;
 
             for (size_t i = 0; i < boole_intervals; i += 4) {
-                out.add(A[i], 14 * dt / 45);
-                out.add(A[i + 1], 64 * dt / 45);
-                out.add(A[i + 2], 24 * dt / 45);
-                out.add(A[i + 3], 64 * dt / 45);
-                out.add(A[i + 4], 14 * dt / 45);
+                out.linear_combination(
+                    1.0,
+                    A[i].term(14 * dt / 45),
+                    A[i + 1].term(64 * dt / 45),
+                    A[i + 2].term(24 * dt / 45),
+                    A[i + 3].term(64 * dt / 45),
+                    A[i + 4].term(14 * dt / 45)
+                );
             }
 
             size_t tail = intervals - boole_intervals;
             size_t start = boole_intervals;
 
             if (tail == 1) {
-                out.add(A[start], dt / 2);
-                out.add(A[start + 1], dt / 2);
+                out.linear_combination(
+                    1.0,
+                    A[start].term(dt / 2),
+                    A[start + 1].term(dt / 2)
+                );
             } else if (tail == 2) {
-                out.add(A[start], dt / 3);
-                out.add(A[start + 1], 4 * dt / 3);
-                out.add(A[start + 2], dt / 3);
+                out.linear_combination(
+                    1.0,
+                    A[start].term(dt / 3),
+                    A[start + 1].term(4 * dt / 3),
+                    A[start + 2].term(dt / 3)
+                );
             } else if (tail == 3) {
-                out.add(A[start], 3 * dt / 8);
-                out.add(A[start + 1], 9 * dt / 8);
-                out.add(A[start + 2], 9 * dt / 8);
-                out.add(A[start + 3], 3 * dt / 8);
+                out.linear_combination(
+                    1.0,
+                    A[start].term(3 * dt / 8),
+                    A[start + 1].term(9 * dt / 8),
+                    A[start + 2].term(9 * dt / 8),
+                    A[start + 3].term(3 * dt / 8)
+                );
             }
         }
 
@@ -120,29 +136,40 @@ namespace Magnus {
                 g3.copy_from(A[start + 3]);
                 g4.copy_from(A[start + 4]);
 
-                A[start].add(g1).add(g2).add(g3).add(g4);
-                A[start + 1]
-                    .scale(dt / 2)
-                    .add(g2, 4 * dt / 3)
-                    .add(g3, 9 * dt / 8)
-                    .add(g4, 64 * dt / 45);
-                A[start + 2]
-                    .scale(dt / 3)
-                    .add(g3, 9 * dt / 8)
-                    .add(g4, 24 * dt / 45);
-                A[start + 3]
-                    .scale(3 * dt / 8)
-                    .add(g4, 64 * dt / 45);
-                A[start + 4]
-                    .scale(14 * dt / 45)
-                    .add(pending);
+                A[start].linear_combination(
+                    1.0,
+                    g1.term(1.0),
+                    g2.term(1.0),
+                    g3.term(1.0),
+                    g4.term(1.0)
+                );
+                A[start + 1].linear_combination(
+                    dt / 2,
+                    g2.term(4 * dt / 3),
+                    g3.term(9 * dt / 8),
+                    g4.term(64 * dt / 45)
+                );
+                A[start + 2].linear_combination(
+                    dt / 3,
+                    g3.term(9 * dt / 8),
+                    g4.term(24 * dt / 45)
+                );
+                A[start + 3].linear_combination(
+                    3 * dt / 8,
+                    g4.term(64 * dt / 45)
+                );
+                A[start + 4].linear_combination(
+                    14 * dt / 45,
+                    pending.term(1.0)
+                );
 
-                pending.copy_from(g1);
-                pending
-                    .scale(dt / 2)
-                    .add(g2, dt / 3)
-                    .add(g3, 3 * dt / 8)
-                    .add(g4, 14 * dt / 45);
+                pending.linear_combination(
+                    0.0,
+                    g1.term(dt / 2),
+                    g2.term(dt / 3),
+                    g3.term(3 * dt / 8),
+                    g4.term(14 * dt / 45)
+                );
 
                 if (start == 0) break;
                 start -= 4;
@@ -157,44 +184,32 @@ namespace Magnus {
             if (boole_intervals == 0) {
                 A[0].zero();
             } else {
-                A[0].copy_from(out);
-                A[0].scale(14 * dt / 45);
+                A[0].linear_combination(0.0, out.term(14 * dt / 45));
                 for (size_t i = 0; i < boole_intervals; i += 4) {
-                    A[i + 1].copy_from(out);
-                    A[i + 1].scale(64 * dt / 45);
-                    A[i + 2].copy_from(out);
-                    A[i + 2].scale(24 * dt / 45);
-                    A[i + 3].copy_from(out);
-                    A[i + 3].scale(64 * dt / 45);
+                    A[i + 1].linear_combination(0.0, out.term(64 * dt / 45));
+                    A[i + 2].linear_combination(0.0, out.term(24 * dt / 45));
+                    A[i + 3].linear_combination(0.0, out.term(64 * dt / 45));
                 }
                 for (size_t i = 4; i < boole_intervals; i += 4) {
-                    A[i].copy_from(out);
-                    A[i].scale(28 * dt / 45);
+                    A[i].linear_combination(0.0, out.term(28 * dt / 45));
                 }
-                A[boole_intervals].copy_from(out);
-                A[boole_intervals].scale(14 * dt / 45);
+                A[boole_intervals].linear_combination(0.0, out.term(14 * dt / 45));
             }
 
             size_t tail = intervals - boole_intervals;
             size_t start = boole_intervals;
             if (tail == 1) {
                 A[start].add(out, dt / 2);
-                A[start + 1].copy_from(out);
-                A[start + 1].scale(dt / 2);
+                A[start + 1].linear_combination(0.0, out.term(dt / 2));
             } else if (tail == 2) {
                 A[start].add(out, dt / 3);
-                A[start + 1].copy_from(out);
-                A[start + 1].scale(4 * dt / 3);
-                A[start + 2].copy_from(out);
-                A[start + 2].scale(dt / 3);
+                A[start + 1].linear_combination(0.0, out.term(4 * dt / 3));
+                A[start + 2].linear_combination(0.0, out.term(dt / 3));
             } else if (tail == 3) {
                 A[start].add(out, 3 * dt / 8);
-                A[start + 1].copy_from(out);
-                A[start + 1].scale(9 * dt / 8);
-                A[start + 2].copy_from(out);
-                A[start + 2].scale(9 * dt / 8);
-                A[start + 3].copy_from(out);
-                A[start + 3].scale(3 * dt / 8);
+                A[start + 1].linear_combination(0.0, out.term(9 * dt / 8));
+                A[start + 2].linear_combination(0.0, out.term(9 * dt / 8));
+                A[start + 3].linear_combination(0.0, out.term(3 * dt / 8));
             }
         }
 

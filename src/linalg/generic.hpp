@@ -14,6 +14,26 @@ namespace Magnus {
         }
     }
 
+    template <class NumT>
+    struct GenericLinearCombination {
+        template <std::same_as<std::pair<double, const NumT* MAGNUS_RESTRICT>>... Terms>
+        MAGNUS_ALWAYS_INLINE static void invoke(
+            size_t dim,
+            NumT* MAGNUS_RESTRICT destination,
+            double destination_coefficient,
+            Terms&&... terms
+        ) {
+            const auto destination_scalar = scalar_as_num<NumT>(destination_coefficient);
+            const size_t size = dim * dim;
+
+            for (size_t i = 0; i < size; ++i) {
+                NumT value = destination[i] * destination_scalar;
+                ((value += terms.second[i] * scalar_as_num<NumT>(terms.first)), ...);
+                destination[i] = value;
+            }
+        }
+    };
+
     template <
         class NumT,
         MatMulKernelT<NumT> mm_kernel,
@@ -96,6 +116,7 @@ namespace Magnus {
         MatZeroKernelT<NumT> z_kernel,
         MatWideZeroKernelT<NumT> wz_kernel,
         MatWideAddKernelT<NumT> wa_kernel,
+        class LinearCombinationT = GenericLinearCombination<NumT>,
         SampleUpdateKernelT<NumT> su_kernel = generic_sample_update<NumT, mm_kernel, ma_kernel, cp_kernel>,
         SampleUpdateVJPKernelT<NumT> suvjp_kernel = generic_sample_update_vjp<NumT, mmvjp_kernel, ma_kernel, cp_kernel>
     >
@@ -136,6 +157,21 @@ namespace Magnus {
 
         static void matwadd( size_t total, NumT* MAGNUS_RESTRICT dst, const NumT* MAGNUS_RESTRICT src ) {
             wa_kernel(total, dst, src);
+        }
+
+        template <class... Terms>
+        MAGNUS_ALWAYS_INLINE static void matlinearcombination(
+            size_t dim,
+            NumT* MAGNUS_RESTRICT destination,
+            double destination_coefficient,
+            Terms&&... terms
+        ) {
+            LinearCombinationT::invoke(
+                dim,
+                destination,
+                destination_coefficient,
+                std::forward<Terms>(terms)...
+            );
         }
 
         static void sample_update(

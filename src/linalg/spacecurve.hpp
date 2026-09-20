@@ -9,6 +9,24 @@ namespace Magnus::SpaceCurve {
     inline constexpr size_t vector_dim = 3;
     inline constexpr size_t storage_size = vector_dim + 1;
 
+    template <class NumT>
+    struct LinearCombination {
+        template <std::same_as<std::pair<double, const NumT* MAGNUS_RESTRICT>>... Terms>
+        MAGNUS_ALWAYS_INLINE static void invoke(
+            [[maybe_unused]] size_t dim,
+            NumT* MAGNUS_RESTRICT destination,
+            double destination_coefficient,
+            Terms&&... terms
+        ) {
+            const auto destination_scalar = scalar_as_num<NumT>(destination_coefficient);
+            poet::static_for<storage_size>([&] [[gnu::always_inline]] (auto I) {
+                NumT value = destination[I] * destination_scalar;
+                ((value += terms.second[I] * scalar_as_num<NumT>(terms.first)), ...);
+                destination[I] = value;
+            });
+        }
+    };
+
     // Internal values use (scalar, vector) storage. With a representing a
     // tangent vector, the reduced Pauli product is
     //     a wedge b = (dot(a, b), cross(a, b) - b.scalar * a).
@@ -249,6 +267,7 @@ namespace Magnus::SpaceCurve {
         SpaceCurve::zero<NumT>,
         SpaceCurve::wzero<NumT>,
         SpaceCurve::wadd<NumT>,
+        SpaceCurve::LinearCombination<NumT>,
         SpaceCurve::sample_update<NumT>,
         SpaceCurve::sample_update_vjp<NumT>
     >;

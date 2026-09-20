@@ -42,6 +42,12 @@ namespace Magnus {
         { T::matzero( size_t{}, m ) } -> std::same_as<void>;
         { T::matwzero( size_t{}, m ) } -> std::same_as<void>;
         { T::matwadd( size_t{}, m, cm ) } -> std::same_as<void>;
+        { T::matlinearcombination(
+            size_t{},
+            m,
+            double{},
+            std::pair<double, const typename T::numeric_t*>{}
+        ) } -> std::same_as<void>;
         { T::sample_update( size_t{}, size_t{}, cm, m, cm, double{}, m ) } -> std::same_as<void>;
         { T::sample_update_vjp( size_t{}, size_t{}, m, cm, m, cm, double{}, m ) } -> std::same_as<void>;
     };
@@ -85,6 +91,7 @@ namespace Magnus {
 
     public:
         using matrix_policy_t = MatPolicyT;
+        using linear_term_t = std::pair<double, const NumT* MAGNUS_RESTRICT>;
 
         MatrixView(NumT* data, size_t dimension) : m_data(data), m_dim(dimension) {}
 
@@ -96,6 +103,10 @@ namespace Magnus {
 
         NumT* data() { return m_data; }
         const NumT* data() const { return m_data; }
+
+        MAGNUS_ALWAYS_INLINE linear_term_t term(double coefficient) const noexcept {
+            return {coefficient, m_data};
+        }
 
         class iterator {
             NumT* m_data;
@@ -231,6 +242,18 @@ namespace Magnus {
 
         MatrixView& scale( double scalar ) {
             matrix_policy_t::matscale( m_dim, m_data, scalar );
+            return *this;
+        }
+
+        template <class... Terms>
+            requires (sizeof...(Terms) > 0 && (std::same_as<std::remove_cvref_t<Terms>, linear_term_t> && ...))
+        MAGNUS_ALWAYS_INLINE MatrixView& linear_combination(double destination_coefficient, Terms&&... terms) {
+            matrix_policy_t::matlinearcombination(
+                m_dim,
+                m_data,
+                destination_coefficient,
+                std::forward<Terms>(terms)...
+            );
             return *this;
         }
 
