@@ -114,35 +114,46 @@ namespace Magnus::VJP {
         auto gl_table = GLTable::get();
         GLTable::DataView view = gl_table->get_order((n + 3) / 2);
 
-        DynMatrixSpanT barY(dim, samples, alloc);
-
-        MatrixT tmp = integrator.borrow_scratch();
+        size_t worker_count = GLIntegrator::lane_count(view.order());
+        MemoryBuffer buffer(vjp_workspace_buffer_bytes<Int>(worker_count, dim, samples));
+        auto buffer_alloc = buffer.template get_allocator<NumT, CACHE_LINE_ALIGNMENT>();
+        std::vector<VJPWorkspace<Int>> workspaces;
+        workspaces.reserve(worker_count);
+        workspaces.emplace_back(dim, samples, dA.data(), alloc);
+        for (size_t i = 1; i < worker_count; ++i) {
+            NumT* local_dA = buffer_alloc.allocate(span_size);
+            workspaces.emplace_back(dim, samples, local_dA, alloc);
+            workspaces.back().dA.zero();
+        }
 
         GLIntegrator::invoke(view.order(), [&](size_t q, int ln){
+            auto& ws = workspaces[ln];
             auto [w_q, x_q] = view[q];
 
             double shift = x_q - 1.0;
             double dscale = dt * w_q;
 
-            integrator.sum_vjp(barY, dOut, dscale);
+            ws.integrator.sum_vjp(ws.barY, dOut, dscale);
 
             for (size_t k = n; k > 1; --k) {
                 SpanT P = fwd_data.template prefix<MatPolicyT>(q, k);
 
-                barY.sample_update_vjp(
-                    dA,
+                ws.barY.sample_update_vjp(
+                    ws.dA,
                     A,
                     P,
                     shift,
-                    tmp
+                    ws.temp
                 );
 
-                integrator.prefix_vjp(barY, dt);
+                ws.integrator.prefix_vjp(ws.barY, dt);
             }
 
             // Reverse of the initial Y.copy_from(A) at the start of this q path.
-            dA.add(barY);
+            ws.dA.add(ws.barY);
         });
+
+        for (size_t i = 1; i < worker_count; ++i) dA.add(workspaces[i].dA);
     }
 
     template <Integrator Int, class GLIntegrator = GL_forloop>
@@ -202,50 +213,61 @@ namespace Magnus::VJP {
         auto gl_table = GLTable::get();
         GLTable::DataView view = gl_table->get_order((n + 3) / 2);
 
-        DynMatrixSpanT barY(dim, samples, alloc);
-
-        MatrixT tmp = integrator.borrow_scratch();
+        size_t worker_count = GLIntegrator::lane_count(view.order());
+        MemoryBuffer buffer(vjp_workspace_buffer_bytes<Int>(worker_count, dim, samples));
+        auto buffer_alloc = buffer.template get_allocator<NumT, CACHE_LINE_ALIGNMENT>();
+        std::vector<VJPWorkspace<Int>> workspaces;
+        workspaces.reserve(worker_count);
+        workspaces.emplace_back(dim, samples, dA.data(), alloc);
+        for (size_t i = 1; i < worker_count; ++i) {
+            NumT* local_dA = buffer_alloc.allocate(span_size);
+            workspaces.emplace_back(dim, samples, local_dA, alloc);
+            workspaces.back().dA.zero();
+        }
 
         GLIntegrator::invoke(view.order(), [&](size_t q, int ln){
+            auto& ws = workspaces[ln];
             auto [w_q, x_q] = view[q];
 
             double shift = x_q - 1.0;
             double dscale = dt * w_q;
 
             MatrixT last_dOut = dOut[n - 1];
-            integrator.sum_vjp(barY, last_dOut, dscale);
+            ws.integrator.sum_vjp(ws.barY, last_dOut, dscale);
 
             for (size_t k = n; k > 2; --k) {
                 SpanT P = fwd_data.template prefix<MatPolicyT>(q, k);
 
-                barY.sample_update_vjp(
-                    dA,
+                ws.barY.sample_update_vjp(
+                    ws.dA,
                     A,
                     P,
                     shift,
-                    tmp
+                    ws.temp
                 );
 
-                integrator.prefix_vjp(barY, dt);
+                ws.integrator.prefix_vjp(ws.barY, dt);
 
                 MatrixT direct_dOut = dOut[k - 2];
-                integrator.sum_vjp_add(barY, direct_dOut, dscale);
+                ws.integrator.sum_vjp_add(ws.barY, direct_dOut, dscale);
             }
 
             SpanT P = fwd_data.template prefix<MatPolicyT>(q, 2);
 
-            barY.sample_update_vjp(
-                dA,
+            ws.barY.sample_update_vjp(
+                ws.dA,
                 A,
                 P,
                 shift,
-                tmp
+                ws.temp
             );
 
-            integrator.prefix_vjp(barY, dt);
+            ws.integrator.prefix_vjp(ws.barY, dt);
 
-            dA.add(barY);
+            ws.dA.add(ws.barY);
         });
+
+        for (size_t i = 1; i < worker_count; ++i) dA.add(workspaces[i].dA);
     }
 
     template <Integrator Int, class GLIntegrator = GL_forloop>
@@ -304,48 +326,59 @@ namespace Magnus::VJP {
         auto gl_table = GLTable::get();
         GLTable::DataView view = gl_table->get_order((n + 3) / 2);
 
-        DynMatrixSpanT barY(dim, samples, alloc);
-
-        MatrixT tmp = integrator.borrow_scratch();
+        size_t worker_count = GLIntegrator::lane_count(view.order());
+        MemoryBuffer buffer(vjp_workspace_buffer_bytes<Int>(worker_count, dim, samples));
+        auto buffer_alloc = buffer.template get_allocator<NumT, CACHE_LINE_ALIGNMENT>();
+        std::vector<VJPWorkspace<Int>> workspaces;
+        workspaces.reserve(worker_count);
+        workspaces.emplace_back(dim, samples, dA.data(), alloc);
+        for (size_t i = 1; i < worker_count; ++i) {
+            NumT* local_dA = buffer_alloc.allocate(span_size);
+            workspaces.emplace_back(dim, samples, local_dA, alloc);
+            workspaces.back().dA.zero();
+        }
 
         GLIntegrator::invoke(view.order(), [&](size_t q, int ln){
+            auto& ws = workspaces[ln];
             auto [w_q, x_q] = view[q];
 
             double shift = x_q - 1.0;
             double dscale = dt * w_q;
 
-            integrator.sum_vjp(barY, dOut, dscale);
+            ws.integrator.sum_vjp(ws.barY, dOut, dscale);
 
             for (size_t k = n; k > 2; --k) {
                 SpanT P = fwd_data.template prefix<MatPolicyT>(q, k);
 
-                barY.sample_update_vjp(
-                    dA,
+                ws.barY.sample_update_vjp(
+                    ws.dA,
                     A,
                     P,
                     shift,
-                    tmp
+                    ws.temp
                 );
 
-                integrator.prefix_vjp(barY, dt);
+                ws.integrator.prefix_vjp(ws.barY, dt);
 
-                integrator.sum_vjp_add(barY, dOut, dscale);
+                ws.integrator.sum_vjp_add(ws.barY, dOut, dscale);
             }
 
             SpanT P = fwd_data.template prefix<MatPolicyT>(q, 2);
 
-            barY.sample_update_vjp(
-                dA,
+            ws.barY.sample_update_vjp(
+                ws.dA,
                 A,
                 P,
                 shift,
-                tmp
+                ws.temp
             );
 
-            integrator.prefix_vjp(barY, dt);
+            ws.integrator.prefix_vjp(ws.barY, dt);
 
-            dA.add(barY);
+            ws.dA.add(ws.barY);
         });
+
+        for (size_t i = 1; i < worker_count; ++i) dA.add(workspaces[i].dA);
     }
 
 

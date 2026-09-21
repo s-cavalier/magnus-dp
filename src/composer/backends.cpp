@@ -92,11 +92,25 @@ std::unique_ptr<Magnus::KernelPlan> Magnus::make_plan(
     });
 }
 
-std::unique_ptr<Magnus::KernelPlan> Magnus::make_vjp_plan(VJPParams& p, size_t num_idx, size_t mat_idx, size_t int_idx, Dispatch::KernelOp op) {
+std::unique_ptr<Magnus::KernelPlan> Magnus::make_vjp_plan(
+    VJPParams& p,
+    size_t num_idx,
+    size_t mat_idx,
+    size_t int_idx,
+    size_t gl_idx,
+    Dispatch::KernelOp op
+) {
     const size_t kernel_idx = static_cast<size_t>(op);
 
     return dispatch_plan(p, num_idx, mat_idx, int_idx, [&]<Integrator Int>() -> std::unique_ptr<KernelPlan> {
-        if (kernel_idx >= vjp_kernels<Int>.size()) throw std::invalid_argument("invalid kernel operation");
-        return std::make_unique<TypedVJPKernelPlan<Int>>(std::move(p), vjp_kernels<Int>[kernel_idx]);
+        return GLBackends::dispatch(gl_idx, p, [&]<Dispatchable GLSpec>() -> std::unique_ptr<KernelPlan> {
+            using GLIntegrator = typename GLSpec::type;
+
+            if (kernel_idx >= vjp_kernels<Int, GLIntegrator>.size()) throw std::invalid_argument("invalid kernel operation");
+            return std::make_unique<TypedVJPKernelPlan<Int>>(
+                std::move(p),
+                vjp_kernels<Int, GLIntegrator>[kernel_idx]
+            );
+        });
     });
 }

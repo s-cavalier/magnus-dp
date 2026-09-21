@@ -365,6 +365,53 @@ def test_gl_backend_dispatch_and_auto_selection():
     np.testing.assert_allclose(parallel_sc, serial_sc, rtol=1e-12, atol=1e-12)
 
 
+def test_gl_backend_dispatch_for_vjp():
+    samples = 33
+    n = 4
+    matrix_data = matrix_values(np.linspace(0.0, 1.0, samples))
+    spacecurve_data = spacecurve_values(np.linspace(0.0, 1.0, samples))
+
+    _, matrix_carry = magnus.compute(
+        n,
+        lambda _: matrix_data,
+        0.0,
+        1.0,
+        samples,
+        integrator="Boole",
+        record_vjp=True,
+    )
+    matrix_cotangent = np.ones((2, 2))
+    matrix_serial = magnus.compute_vjp(
+        n, lambda _: matrix_data, matrix_cotangent, 0.0, 1.0, samples,
+        integrator="Boole", gl_backend="serial", vjp_data=matrix_carry,
+    )
+    matrix_parallel = magnus.compute_vjp(
+        n, lambda _: matrix_data, matrix_cotangent, 0.0, 1.0, samples,
+        integrator="Boole", gl_backend="openmp", vjp_data=matrix_carry,
+    )
+    np.testing.assert_allclose(matrix_parallel, matrix_serial, rtol=1e-12, atol=1e-12)
+
+    _, spacecurve_carry = magnus.compute_sc(
+        n,
+        lambda _: spacecurve_data,
+        0.0,
+        1.0,
+        samples,
+        integrator="Boole",
+        record_vjp=True,
+    )
+    spacecurve_cotangent = np.ones(3)
+    spacecurve_serial = magnus.compute_sc_vjp(
+        n, lambda _: spacecurve_data, spacecurve_cotangent, 0.0, 1.0, samples,
+        integrator="Boole", gl_backend="serial", vjp_data=spacecurve_carry,
+    )
+    spacecurve_parallel = magnus.compute_sc_vjp(
+        n, lambda _: spacecurve_data, spacecurve_cotangent, 0.0, 1.0, samples,
+        integrator="Boole", gl_backend="openmp", vjp_data=spacecurve_carry,
+    )
+    np.testing.assert_allclose(spacecurve_parallel, spacecurve_serial, rtol=1e-12, atol=1e-12)
+
+
 def test_matrix_vectorized_and_pointwise_sampling_match():
     t0 = 0.0
     tf = 2.0

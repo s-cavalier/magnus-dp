@@ -170,6 +170,7 @@ def compute_vjp(
     vectorized: bool = True,
     matrix_backend: MatrixBackendName = "Auto",
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     vjp_data=None,
 ) -> np.ndarray:
     data = _sample_callable(
@@ -191,6 +192,7 @@ def compute_vjp(
         op=op,
         matrix_backend=matrix_backend,
         integrator=integrator,
+        gl_backend=gl_backend,
     )
 
 
@@ -206,6 +208,7 @@ def compute_sc_vjp(
     dtype=None,
     vectorized: bool = True,
     integrator: IntegratorName = "Auto",
+    gl_backend: GLBackendName = "Auto",
     vjp_data=None,
 ) -> np.ndarray:
     data = _sample_spacecurve_callable(
@@ -226,4 +229,5 @@ def compute_sc_vjp(
         tf=tf,
         op=op,
         integrator=integrator,
+        gl_backend=gl_backend,
     )

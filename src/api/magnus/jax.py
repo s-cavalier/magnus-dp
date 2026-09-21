@@ -164,6 +164,7 @@ def _matrix_bwd_call(
     tf: float,
     matrix_backend: MatrixBackendName,
     integrator: IntegratorName,
+    gl_backend: GLBackendName,
 ):
     call = jax.ffi.ffi_call(
         "magnus_matrix_bwd",
@@ -178,6 +179,7 @@ def _matrix_bwd_call(
         tf=float(tf),
         matrix_backend=matrix_backend,
         integrator=integrator,
+        gl_backend=gl_backend,
     )
 
 
@@ -190,6 +192,7 @@ def _spacecurve_bwd_call(
     t0: float,
     tf: float,
     integrator: IntegratorName,
+    gl_backend: GLBackendName,
 ):
     call = jax.ffi.ffi_call(
         "magnus_spacecurve_bwd",
@@ -203,6 +206,7 @@ def _spacecurve_bwd_call(
         t0=float(t0),
         tf=float(tf),
         integrator=integrator,
+        gl_backend=gl_backend,
     )
 
 
@@ -288,6 +292,7 @@ def _matrix_bwd(
         tf,
         matrix_backend,
         integrator,
+        gl_backend,
     )
     return (dA,)
 
@@ -335,6 +340,7 @@ def _spacecurve_bwd(
         t0,
         tf,
         integrator,
+        gl_backend,
     )
     return (dA,)
 

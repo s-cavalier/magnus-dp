@@ -374,7 +374,7 @@ namespace Dispatch {
     };
 
 namespace Dispatch {
-    template <Integrator Int>
+    template <Integrator Int, class GLIntegrator = GL_forloop>
     void one_vjp(
         VJPParams& p,
         const api_allocator_t<typename Int::numeric_t>& alloc = api_allocator_t<typename Int::numeric_t>()
@@ -391,10 +391,10 @@ namespace Dispatch {
         SpanT A(buffers.in, p.dim, p.samples);
         auto carry = p.template make_vjp_carry<NumT>();
 
-        VJP::one<Int>(dA, dOut, p.n, A, p.t0, p.tf, carry ? &*carry : nullptr, typed_alloc);
+        VJP::one<Int, GLIntegrator>(dA, dOut, p.n, A, p.t0, p.tf, carry ? &*carry : nullptr, typed_alloc);
     }
 
-    template <Integrator Int>
+    template <Integrator Int, class GLIntegrator = GL_forloop>
     void many_vjp(
         VJPParams& p,
         const api_allocator_t<typename Int::numeric_t>& alloc = api_allocator_t<typename Int::numeric_t>()
@@ -410,10 +410,10 @@ namespace Dispatch {
         SpanT A(buffers.in, p.dim, p.samples);
         auto carry = p.template make_vjp_carry<NumT>();
 
-        VJP::many<Int>(dA, dOut, A, p.t0, p.tf, carry ? &*carry : nullptr, typed_alloc);
+        VJP::many<Int, GLIntegrator>(dA, dOut, A, p.t0, p.tf, carry ? &*carry : nullptr, typed_alloc);
     }
 
-    template <Integrator Int>
+    template <Integrator Int, class GLIntegrator = GL_forloop>
     void sum_vjp(
         VJPParams& p,
         const api_allocator_t<typename Int::numeric_t>& alloc = api_allocator_t<typename Int::numeric_t>()
@@ -430,17 +430,17 @@ namespace Dispatch {
         SpanT A(buffers.in, p.dim, p.samples);
         auto carry = p.template make_vjp_carry<NumT>();
 
-        VJP::sum<Int>(dA, dOut, p.n, A, p.t0, p.tf, carry ? &*carry : nullptr, typed_alloc);
+        VJP::sum<Int, GLIntegrator>(dA, dOut, p.n, A, p.t0, p.tf, carry ? &*carry : nullptr, typed_alloc);
     }
 }
     template <class NumT>
     using vjp_kernel_dispatch_t = void(*)(VJPParams&, const api_allocator_t<NumT>&);
 
-    template <Integrator Int>
+    template <Integrator Int, class GLIntegrator = GL_forloop>
     inline constexpr std::array<vjp_kernel_dispatch_t<typename Int::numeric_t>, 3> vjp_kernels{
-        &Dispatch::one_vjp<Int>,
-        &Dispatch::many_vjp<Int>,
-        &Dispatch::sum_vjp<Int>
+        &Dispatch::one_vjp<Int, GLIntegrator>,
+        &Dispatch::many_vjp<Int, GLIntegrator>,
+        &Dispatch::sum_vjp<Int, GLIntegrator>
     };
 
     struct KernelPlan {

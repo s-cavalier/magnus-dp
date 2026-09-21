@@ -102,7 +102,8 @@ def test_jax_matrix_gradient_matches_direct_vjp(op, record_vjp):
 
 @pytest.mark.parametrize("op", ["one", "many", "sum"])
 @pytest.mark.parametrize("record_vjp", [False, True])
-def test_jax_spacecurve_gradient_matches_direct_vjp(op, record_vjp):
+@pytest.mark.parametrize("gl_backend", ["serial", "openmp"])
+def test_jax_spacecurve_gradient_matches_direct_vjp(op, record_vjp, gl_backend):
     samples = 9
     n = 4
     t = jnp.linspace(0.0, 1.0, samples)
@@ -119,6 +120,7 @@ def test_jax_spacecurve_gradient_matches_direct_vjp(op, record_vjp):
             samples,
             op=op,
             integrator="Boole",
+            gl_backend=gl_backend,
             record_vjp=record_vjp,
         )
         out = result[0] if record_vjp else result
@@ -134,6 +136,7 @@ def test_jax_spacecurve_gradient_matches_direct_vjp(op, record_vjp):
         samples,
         op=op,
         integrator="Boole",
+        gl_backend=gl_backend,
     )
     np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
 

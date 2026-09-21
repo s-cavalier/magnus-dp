@@ -246,7 +246,8 @@ py::array run_vjp_typed(
     double tf,
     std::string_view op,
     std::string_view matrix_backend,
-    std::string_view integrator
+    std::string_view integrator,
+    std::string_view gl_backend
 ) {
     CArrayCoercible<NumT> typed = CArrayCoercible<NumT>::ensure(data);
     CArrayCoercible<NumT> typed_cotangent = CArrayCoercible<NumT>::ensure(cotangent);
@@ -290,7 +291,8 @@ py::array run_vjp_typed(
             tf,
             Dispatch::op_from_str(op),
             MatrixBackends::resolve(matrix_backend),
-            IntegratorBackends::resolve(integrator)
+            IntegratorBackends::resolve(integrator),
+            GLBackends::resolve(gl_backend)
         );
     }
 
@@ -306,7 +308,8 @@ py::array run_spacecurve_vjp_typed(
     double t0,
     double tf,
     std::string_view op,
-    std::string_view integrator
+    std::string_view integrator,
+    std::string_view gl_backend
 ) {
     CArrayCoercible<NumT> typed = CArrayCoercible<NumT>::ensure(data);
     CArrayCoercible<NumT> typed_cotangent = CArrayCoercible<NumT>::ensure(cotangent);
@@ -347,7 +350,8 @@ py::array run_spacecurve_vjp_typed(
             t0,
             tf,
             Dispatch::op_from_str(op),
-            IntegratorBackends::resolve(integrator)
+            IntegratorBackends::resolve(integrator),
+            GLBackends::resolve(gl_backend)
         );
     }
 
@@ -402,14 +406,15 @@ py::array compute_vjp(
     double tf,
     std::string_view op,
     std::string_view matrix_backend,
-    std::string_view integrator
+    std::string_view integrator,
+    std::string_view gl_backend
 ) {
     py::dtype dtype = data.dtype();
 
-    if (dtype.is(py::dtype::of<f32>())) return run_vjp_typed<f32>(n, data, cotangent, vjp_data, t0, tf, op, matrix_backend, integrator);
-    if (dtype.is(py::dtype::of<f64>())) return run_vjp_typed<f64>(n, data, cotangent, vjp_data, t0, tf, op, matrix_backend, integrator);
-    if (dtype.is(py::dtype::of<c32>())) return run_vjp_typed<c32>(n, data, cotangent, vjp_data, t0, tf, op, matrix_backend, integrator);
-    if (dtype.is(py::dtype::of<c64>())) return run_vjp_typed<c64>(n, data, cotangent, vjp_data, t0, tf, op, matrix_backend, integrator);
+    if (dtype.is(py::dtype::of<f32>())) return run_vjp_typed<f32>(n, data, cotangent, vjp_data, t0, tf, op, matrix_backend, integrator, gl_backend);
+    if (dtype.is(py::dtype::of<f64>())) return run_vjp_typed<f64>(n, data, cotangent, vjp_data, t0, tf, op, matrix_backend, integrator, gl_backend);
+    if (dtype.is(py::dtype::of<c32>())) return run_vjp_typed<c32>(n, data, cotangent, vjp_data, t0, tf, op, matrix_backend, integrator, gl_backend);
+    if (dtype.is(py::dtype::of<c64>())) return run_vjp_typed<c64>(n, data, cotangent, vjp_data, t0, tf, op, matrix_backend, integrator, gl_backend);
     throw py::type_error("magnus only supports dtypes float32, float64, complex64, and complex128");
 }
 
@@ -421,14 +426,15 @@ py::array compute_sc_vjp(
     double t0,
     double tf,
     std::string_view op,
-    std::string_view integrator
+    std::string_view integrator,
+    std::string_view gl_backend
 ) {
     py::dtype dtype = data.dtype();
 
-    if (dtype.is(py::dtype::of<f32>())) return run_spacecurve_vjp_typed<f32>(n, data, cotangent, vjp_data, t0, tf, op, integrator);
-    if (dtype.is(py::dtype::of<f64>())) return run_spacecurve_vjp_typed<f64>(n, data, cotangent, vjp_data, t0, tf, op, integrator);
-    if (dtype.is(py::dtype::of<c32>())) return run_spacecurve_vjp_typed<c32>(n, data, cotangent, vjp_data, t0, tf, op, integrator);
-    if (dtype.is(py::dtype::of<c64>())) return run_spacecurve_vjp_typed<c64>(n, data, cotangent, vjp_data, t0, tf, op, integrator);
+    if (dtype.is(py::dtype::of<f32>())) return run_spacecurve_vjp_typed<f32>(n, data, cotangent, vjp_data, t0, tf, op, integrator, gl_backend);
+    if (dtype.is(py::dtype::of<f64>())) return run_spacecurve_vjp_typed<f64>(n, data, cotangent, vjp_data, t0, tf, op, integrator, gl_backend);
+    if (dtype.is(py::dtype::of<c32>())) return run_spacecurve_vjp_typed<c32>(n, data, cotangent, vjp_data, t0, tf, op, integrator, gl_backend);
+    if (dtype.is(py::dtype::of<c64>())) return run_spacecurve_vjp_typed<c64>(n, data, cotangent, vjp_data, t0, tf, op, integrator, gl_backend);
     throw py::type_error("magnus only supports dtypes float32, float64, complex64, and complex128");
 }
 
@@ -525,6 +531,7 @@ PYBIND11_MODULE(_core, m) {
         py::arg("op") = "sum",
         py::arg("matrix_backend") = "Auto",
         py::arg("integrator") = "Auto",
+        py::arg("gl_backend") = "Auto",
         "Compute the VJP of a Magnus operation with respect to sampled matrix data."
     );
 
@@ -539,6 +546,7 @@ PYBIND11_MODULE(_core, m) {
         py::arg("tf") = 1.0,
         py::arg("op") = "sum",
         py::arg("integrator") = "Auto",
+        py::arg("gl_backend") = "Auto",
         "Compute the VJP of a SpaceCurve Magnus operation with respect to sampled vector data."
     );
 

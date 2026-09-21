@@ -20,7 +20,7 @@ namespace Magnus {
     void initialize_default_gl_table();
 
     std::unique_ptr<KernelPlan> make_plan(Params& p, size_t num_idx, size_t mat_idx, size_t int_idx, size_t gl_idx, bool vjp_record, Dispatch::KernelOp op);
-    std::unique_ptr<KernelPlan> make_vjp_plan(VJPParams& p, size_t num_idx, size_t mat_idx, size_t int_idx, Dispatch::KernelOp op);
+    std::unique_ptr<KernelPlan> make_vjp_plan(VJPParams& p, size_t num_idx, size_t mat_idx, size_t int_idx, size_t gl_idx, Dispatch::KernelOp op);
 
     namespace detail {
 
@@ -233,6 +233,7 @@ namespace Magnus {
             Dispatch::KernelOp op,
             size_t mat_idx,
             size_t int_idx,
+            size_t gl_idx,
             const api_erased_allocator_t& alloc = api_erased_allocator_t()
         ) {
             VJPParams params{
@@ -246,7 +247,14 @@ namespace Magnus {
 
             size_t num_idx = NumBackends::resolve(type_name_v<NumT>);
 
-            std::unique_ptr<KernelPlan> plan = make_vjp_plan(params, num_idx, mat_idx, int_idx, op);
+            std::unique_ptr<KernelPlan> plan = make_vjp_plan(
+                params,
+                num_idx,
+                mat_idx,
+                int_idx,
+                gl_idx,
+                op
+            );
             plan->run(alloc);
         }
 
@@ -312,6 +320,7 @@ namespace Magnus {
             double tf,
             Dispatch::KernelOp op,
             size_t int_idx,
+            size_t gl_idx,
             const api_erased_allocator_t& alloc = api_erased_allocator_t()
         ) {
             size_t result_count = output_count(op, n);
@@ -346,6 +355,7 @@ namespace Magnus {
                 op,
                 MatrixBackends::resolve("SpaceCurve"),
                 int_idx,
+                gl_idx,
                 alloc
             );
 
@@ -411,7 +421,8 @@ namespace Magnus {
         double tf,
         Dispatch::KernelOp op,
         size_t mat_idx,
-        size_t int_idx
+        size_t int_idx,
+        size_t gl_idx = GLBackends::resolve("Auto")
     ) {
         detail::validate_raw_buffers(in, out);
         if (cotangent == nullptr) throw std::invalid_argument("cotangent buffer must not be null");
@@ -429,7 +440,8 @@ namespace Magnus {
             tf,
             op,
             mat_idx,
-            int_idx
+            int_idx,
+            gl_idx
         );
     }
 
@@ -446,7 +458,8 @@ namespace Magnus {
         double tf,
         std::string_view op,
         std::string_view matrix_backend,
-        std::string_view integrator
+        std::string_view integrator,
+        std::string_view gl_backend = "Auto"
     ) {
         run_vjp_raw(
             n,
@@ -460,7 +473,8 @@ namespace Magnus {
             tf,
             Dispatch::op_from_str(op),
             MatrixBackends::resolve(matrix_backend),
-            IntegratorBackends::resolve(integrator)
+            IntegratorBackends::resolve(integrator),
+            GLBackends::resolve(gl_backend)
         );
     }
 
@@ -594,7 +608,8 @@ namespace Magnus {
         double t0,
         double tf,
         Dispatch::KernelOp op,
-        size_t int_idx
+        size_t int_idx,
+        size_t gl_idx = GLBackends::resolve("Auto")
     ) {
         detail::validate_raw_buffers(in, out);
         if (cotangent == nullptr) throw std::invalid_argument("cotangent buffer must not be null");
@@ -610,7 +625,8 @@ namespace Magnus {
             t0,
             tf,
             op,
-            int_idx
+            int_idx,
+            gl_idx
         );
     }
 
@@ -625,7 +641,8 @@ namespace Magnus {
         double t0,
         double tf,
         std::string_view op,
-        std::string_view integrator
+        std::string_view integrator,
+        std::string_view gl_backend = "Auto"
     ) {
         run_spacecurve_vjp_raw(
             n,
@@ -637,7 +654,8 @@ namespace Magnus {
             t0,
             tf,
             Dispatch::op_from_str(op),
-            IntegratorBackends::resolve(integrator)
+            IntegratorBackends::resolve(integrator),
+            GLBackends::resolve(gl_backend)
         );
     }
 

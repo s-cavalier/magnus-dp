@@ -173,6 +173,7 @@ ffi::Error matrix_impl_bwd(
     double tf,
     std::string_view matrix_backend,
     std::string_view integrator,
+    std::string_view gl_backend,
     size_t samples,
     size_t dim,
     ffi::AnyBuffer data,
@@ -192,7 +193,8 @@ ffi::Error matrix_impl_bwd(
         tf,
         Dispatch::op_from_str(op),
         MatrixBackends::resolve(matrix_backend),
-        IntegratorBackends::resolve(integrator)
+        IntegratorBackends::resolve(integrator),
+        GLBackends::resolve(gl_backend)
     );
 
     return ffi::Error::Success();
@@ -205,6 +207,7 @@ ffi::Error spacecurve_impl_bwd(
     double t0,
     double tf,
     std::string_view integrator,
+    std::string_view gl_backend,
     size_t samples,
     ffi::AnyBuffer data,
     ffi::AnyBuffer cotangent,
@@ -221,7 +224,8 @@ ffi::Error spacecurve_impl_bwd(
         t0,
         tf,
         Dispatch::op_from_str(op),
-        IntegratorBackends::resolve(integrator)
+        IntegratorBackends::resolve(integrator),
+        GLBackends::resolve(gl_backend)
     );
 
     return ffi::Error::Success();
@@ -378,11 +382,16 @@ ffi::Error matrix_dispatch_bwd(
     double tf,
     std::string_view matrix_backend,
     std::string_view integrator,
+    std::string_view gl_backend,
+    ffi::ThreadPool thread_pool,
     ffi::AnyBuffer data,
     ffi::AnyBuffer cotangent,
     std::optional<ffi::AnyBuffer> carry,
     ffi::Result<ffi::AnyBuffer> out
 ) {
+    XlaGLThreadPool pool(thread_pool);
+    Magnus::detail::ScopedGLThreadPool pool_scope(pool);
+
     try {
         if (data.element_type() != cotangent.element_type()) return ffi::Error::InvalidArgument("input and cotangent dtypes must match");
         if (data.element_type() != out->element_type()) return ffi::Error::InvalidArgument("input and output dtypes must match");
@@ -405,6 +414,7 @@ ffi::Error matrix_dispatch_bwd(
             tf,
             matrix_backend,
             integrator,
+            gl_backend,
             input_shape.samples,
             input_shape.dim,
             data,
@@ -425,11 +435,16 @@ ffi::Error spacecurve_dispatch_bwd(
     double t0,
     double tf,
     std::string_view integrator,
+    std::string_view gl_backend,
+    ffi::ThreadPool thread_pool,
     ffi::AnyBuffer data,
     ffi::AnyBuffer cotangent,
     std::optional<ffi::AnyBuffer> carry,
     ffi::Result<ffi::AnyBuffer> out
 ) {
+    XlaGLThreadPool pool(thread_pool);
+    Magnus::detail::ScopedGLThreadPool pool_scope(pool);
+
     try {
         if (data.element_type() != cotangent.element_type()) return ffi::Error::InvalidArgument("input and cotangent dtypes must match");
         if (data.element_type() != out->element_type()) return ffi::Error::InvalidArgument("input and output dtypes must match");
@@ -451,6 +466,7 @@ ffi::Error spacecurve_dispatch_bwd(
             t0,
             tf,
             integrator,
+            gl_backend,
             input_shape.samples,
             data,
             cotangent,
@@ -584,6 +600,8 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Attr<double>("tf")
         .Attr<std::string_view>("matrix_backend")
         .Attr<std::string_view>("integrator")
+        .Attr<std::string_view>("gl_backend")
+        .Ctx<ffi::ThreadPool>()
         .Arg<ffi::AnyBuffer>()
         .Arg<ffi::AnyBuffer>()
         .OptionalArg<ffi::AnyBuffer>()
@@ -599,6 +617,8 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Attr<double>("t0")
         .Attr<double>("tf")
         .Attr<std::string_view>("integrator")
+        .Attr<std::string_view>("gl_backend")
+        .Ctx<ffi::ThreadPool>()
         .Arg<ffi::AnyBuffer>()
         .Arg<ffi::AnyBuffer>()
         .OptionalArg<ffi::AnyBuffer>()

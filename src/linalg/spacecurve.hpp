@@ -237,8 +237,8 @@ namespace Magnus::SpaceCurve {
         }
     }
 
-    template <class NumT>
-    void sample_update_vjp(
+    template <class NumT, poet::instruction_set Arch = default_isa()>
+    MAGNUS_ALWAYS_INLINE void sample_update_vjp(
         [[maybe_unused]] size_t dim,
         size_t len,
         NumT* MAGNUS_RESTRICT dA,
@@ -293,6 +293,137 @@ namespace Magnus::SpaceCurve {
                     - g[previous] * a[next];
             });
         };
+
+#if MAGNUS_IS_X86
+        if constexpr (Arch == poet::instruction_set::avx2 && std::same_as<NumT, double>) {
+            const __m256d shift_v = _mm256_set1_pd(shift);
+
+            auto transpose4 = [](__m256d& row0, __m256d& row1, __m256d& row2, __m256d& row3) {
+                const __m256d pair01lo = _mm256_unpacklo_pd(row0, row1);
+                const __m256d pair01hi = _mm256_unpackhi_pd(row0, row1);
+                const __m256d pair23lo = _mm256_unpacklo_pd(row2, row3);
+                const __m256d pair23hi = _mm256_unpackhi_pd(row2, row3);
+
+                row0 = _mm256_permute2f128_pd(pair01lo, pair23lo, 0x20);
+                row1 = _mm256_permute2f128_pd(pair01hi, pair23hi, 0x20);
+                row2 = _mm256_permute2f128_pd(pair01lo, pair23lo, 0x31);
+                row3 = _mm256_permute2f128_pd(pair01hi, pair23hi, 0x31);
+            };
+
+            reverse_sample(last);
+            NumT* MAGNUS_RESTRICT bar_total = barY + last * storage_size;
+            poet::static_for<storage_size>([&](auto I) {
+                bar_total[I] = temp[I] * one_plus_x;
+            });
+
+            size_t sample = last;
+            __m256d bar_total0 = _mm256_setzero_pd();
+            __m256d bar_total1 = _mm256_setzero_pd();
+            __m256d bar_total2 = _mm256_setzero_pd();
+            __m256d bar_total3 = _mm256_setzero_pd();
+            for (; sample >= 4; sample -= 4) {
+                const size_t base = sample - 4;
+
+                __m256d a0 = _mm256_loadu_pd(A + storage_size * base);
+                __m256d a1 = _mm256_loadu_pd(A + storage_size * base + 4);
+                __m256d a2 = _mm256_loadu_pd(A + storage_size * base + 8);
+                __m256d a3 = _mm256_loadu_pd(A + storage_size * base + 12);
+                transpose4(a0, a1, a2, a3);
+
+                __m256d g0 = _mm256_loadu_pd(barY + storage_size * base);
+                __m256d g1 = _mm256_loadu_pd(barY + storage_size * base + 4);
+                __m256d g2 = _mm256_loadu_pd(barY + storage_size * base + 8);
+                __m256d g3 = _mm256_loadu_pd(barY + storage_size * base + 12);
+                transpose4(g0, g1, g2, g3);
+
+                __m256d b0 = _mm256_loadu_pd(prefix + storage_size * base);
+                __m256d b1 = _mm256_loadu_pd(prefix + storage_size * base + 4);
+                __m256d b2 = _mm256_loadu_pd(prefix + storage_size * base + 8);
+                __m256d b3 = _mm256_loadu_pd(prefix + storage_size * base + 12);
+                transpose4(b0, b1, b2, b3);
+                b0 = _mm256_fmadd_pd(_mm256_broadcast_sd(total), shift_v, b0);
+                b1 = _mm256_fmadd_pd(_mm256_broadcast_sd(total + 1), shift_v, b1);
+                b2 = _mm256_fmadd_pd(_mm256_broadcast_sd(total + 2), shift_v, b2);
+                b3 = _mm256_fmadd_pd(_mm256_broadcast_sd(total + 3), shift_v, b3);
+
+                __m256d da0 = _mm256_setzero_pd();
+                __m256d da1 = _mm256_mul_pd(g0, b1);
+                da1 = _mm256_fnmadd_pd(g1, b0, da1);
+                da1 = _mm256_fnmadd_pd(g2, b3, da1);
+                da1 = _mm256_fmadd_pd(g3, b2, da1);
+
+                __m256d da2 = _mm256_mul_pd(g0, b2);
+                da2 = _mm256_fnmadd_pd(g2, b0, da2);
+                da2 = _mm256_fnmadd_pd(g3, b1, da2);
+                da2 = _mm256_fmadd_pd(g1, b3, da2);
+
+                __m256d da3 = _mm256_mul_pd(g0, b3);
+                da3 = _mm256_fnmadd_pd(g3, b0, da3);
+                da3 = _mm256_fnmadd_pd(g1, b2, da3);
+                da3 = _mm256_fmadd_pd(g2, b1, da3);
+
+                __m256d temp0 = _mm256_mul_pd(g1, a1);
+                temp0 = _mm256_fmadd_pd(g2, a2, temp0);
+                temp0 = _mm256_fnmadd_pd(g3, a3, _mm256_sub_pd(_mm256_setzero_pd(), temp0));
+
+                __m256d temp1 = _mm256_sub_pd(
+                    _mm256_fmadd_pd(g2, a3, _mm256_mul_pd(g0, a1)),
+                    _mm256_mul_pd(g3, a2)
+                );
+                __m256d temp2 = _mm256_sub_pd(
+                    _mm256_fmadd_pd(g3, a1, _mm256_mul_pd(g0, a2)),
+                    _mm256_mul_pd(g1, a3)
+                );
+                __m256d temp3 = _mm256_sub_pd(
+                    _mm256_fmadd_pd(g1, a2, _mm256_mul_pd(g0, a3)),
+                    _mm256_mul_pd(g2, a1)
+                );
+
+                transpose4(da0, da1, da2, da3);
+                _mm256_storeu_pd(dA + storage_size * base, _mm256_add_pd(_mm256_loadu_pd(dA + storage_size * base), da0));
+                _mm256_storeu_pd(dA + storage_size * base + 4, _mm256_add_pd(_mm256_loadu_pd(dA + storage_size * base + 4), da1));
+                _mm256_storeu_pd(dA + storage_size * base + 8, _mm256_add_pd(_mm256_loadu_pd(dA + storage_size * base + 8), da2));
+                _mm256_storeu_pd(dA + storage_size * base + 12, _mm256_add_pd(_mm256_loadu_pd(dA + storage_size * base + 12), da3));
+
+                bar_total0 = _mm256_fmadd_pd(temp0, shift_v, bar_total0);
+                bar_total1 = _mm256_fmadd_pd(temp1, shift_v, bar_total1);
+                bar_total2 = _mm256_fmadd_pd(temp2, shift_v, bar_total2);
+                bar_total3 = _mm256_fmadd_pd(temp3, shift_v, bar_total3);
+
+                transpose4(temp0, temp1, temp2, temp3);
+                _mm256_storeu_pd(barY + storage_size * base, temp0);
+                _mm256_storeu_pd(barY + storage_size * base + 4, temp1);
+                _mm256_storeu_pd(barY + storage_size * base + 8, temp2);
+                _mm256_storeu_pd(barY + storage_size * base + 12, temp3);
+            }
+
+            alignas(32) double bar_total0_lanes[4];
+            alignas(32) double bar_total1_lanes[4];
+            alignas(32) double bar_total2_lanes[4];
+            alignas(32) double bar_total3_lanes[4];
+            _mm256_store_pd(bar_total0_lanes, bar_total0);
+            _mm256_store_pd(bar_total1_lanes, bar_total1);
+            _mm256_store_pd(bar_total2_lanes, bar_total2);
+            _mm256_store_pd(bar_total3_lanes, bar_total3);
+            poet::static_for<4>([&](auto I) {
+                bar_total[0] += bar_total0_lanes[I];
+                bar_total[1] += bar_total1_lanes[I];
+                bar_total[2] += bar_total2_lanes[I];
+                bar_total[3] += bar_total3_lanes[I];
+            });
+
+            for (; sample > 0; --sample) {
+                const size_t current = sample - 1;
+                reverse_sample(current);
+                NumT* MAGNUS_RESTRICT g = barY + current * storage_size;
+                poet::static_for<storage_size>([&](auto I) {
+                    bar_total[I] += temp[I] * x;
+                    g[I] = temp[I];
+                });
+            }
+            return;
+        }
+#endif
 
         reverse_sample(last);
         NumT* MAGNUS_RESTRICT bar_total = barY + last * storage_size;
@@ -352,7 +483,7 @@ namespace Magnus::SpaceCurve {
         SpaceCurve::wzero<NumT>,
         SpaceCurve::wadd<NumT>,
         SpaceCurve::sample_update<NumT, Arch>,
-        SpaceCurve::sample_update_vjp<NumT>,
+        SpaceCurve::sample_update_vjp<NumT, Arch>,
         LinearCombine<NumT>
     >;
 
