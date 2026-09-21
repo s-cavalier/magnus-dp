@@ -1,17 +1,30 @@
 #ifndef __LINALG_SPACECURVE_HPP__
 #define __LINALG_SPACECURVE_HPP__
 #include "generic.hpp"
+#include "poet/core/cpu_info.hpp"
 #include <array>
 #include <poet/poet.hpp>
+
+#if MAGNUS_IS_X86
+#include <immintrin.h>
+#endif
 
 namespace Magnus::SpaceCurve {
 
     inline constexpr size_t vector_dim = 3;
     inline constexpr size_t storage_size = vector_dim + 1;
 
-    // Internal values use (scalar, vector) storage. With a representing a
-    // tangent vector, the reduced Pauli product is
-    //     a wedge b = (dot(a, b), cross(a, b) - b.scalar * a).
+    // Until an AVX-512 implementation exists, use the AVX2 kernel for an
+    // AVX-512 target as well. AVX-512 targets support AVX2 instructions, and
+    // selecting detected_isa() directly would otherwise fall through to the
+    // scalar implementation.
+    consteval poet::instruction_set default_isa() {
+        if constexpr (poet::detected_isa() == poet::instruction_set::avx_512) {
+            return poet::instruction_set::avx2;
+        }
+        return poet::detected_isa();
+    }
+
     template <class NumT>
     MAGNUS_ALWAYS_INLINE void wedge_product(
         const NumT* MAGNUS_RESTRICT a,
@@ -138,7 +151,7 @@ namespace Magnus::SpaceCurve {
         poet::static_for<storage_size>([&](auto I) { dst[I] = NumT{0}; });
     }
 
-    template <class NumT>
+    template <class NumT, poet::instruction_set Arch = default_isa()>
     void sample_update(
         [[maybe_unused]] size_t dim,
         size_t len,
@@ -148,12 +161,74 @@ namespace Magnus::SpaceCurve {
         double shift,
         [[maybe_unused]] NumT* MAGNUS_RESTRICT temp
     ) {
-        auto x = scalar_as_num<NumT>(shift);
+#if MAGNUS_IS_X86
+        if constexpr ( Arch == poet::instruction_set::avx2 && std::same_as<NumT, double>) {
+            const __m256d shift_v = _mm256_set1_pd(shift);
+            size_t sample = 0;
 
+            auto transpose4 = []( __m256d& row0, __m256d& row1, __m256d& row2, __m256d& row3) {
+                const __m256d pair01lo = _mm256_unpacklo_pd(row0, row1);
+                const __m256d pair01hi = _mm256_unpackhi_pd(row0, row1);
+                const __m256d pair23lo = _mm256_unpacklo_pd(row2, row3);
+                const __m256d pair23hi = _mm256_unpackhi_pd(row2, row3);
+
+                row0 = _mm256_permute2f128_pd(pair01lo, pair23lo, 0x20);
+                row1 = _mm256_permute2f128_pd(pair01hi, pair23hi, 0x20);
+                row2 = _mm256_permute2f128_pd(pair01lo, pair23lo, 0x31);
+                row3 = _mm256_permute2f128_pd(pair01hi, pair23hi, 0x31);
+            };
+
+            for (; sample + 4 <= len; sample += 4) {
+                __m256d a0 = _mm256_loadu_pd(A + storage_size * sample);
+                __m256d a1 = _mm256_loadu_pd(A + storage_size * sample + 4);
+                __m256d a2 = _mm256_loadu_pd(A + storage_size * sample + 8);
+                __m256d a3 = _mm256_loadu_pd(A + storage_size * sample + 12);
+                transpose4(a0, a1, a2, a3);
+
+                __m256d b0 = _mm256_loadu_pd(Y + storage_size * sample);
+                __m256d b1 = _mm256_loadu_pd(Y + storage_size * sample + 4);
+                __m256d b2 = _mm256_loadu_pd(Y + storage_size * sample + 8);
+                __m256d b3 = _mm256_loadu_pd(Y + storage_size * sample + 12);
+                transpose4(b0, b1, b2, b3);
+
+                b0 = _mm256_fmadd_pd(_mm256_broadcast_sd(total), shift_v, b0);
+                b1 = _mm256_fmadd_pd(_mm256_broadcast_sd(total + 1), shift_v, b1);
+                b2 = _mm256_fmadd_pd(_mm256_broadcast_sd(total + 2), shift_v, b2);
+                b3 = _mm256_fmadd_pd(_mm256_broadcast_sd(total + 3), shift_v, b3);
+
+                __m256d out0 = _mm256_fmadd_pd(a3, b3, _mm256_fmadd_pd(a2, b2, _mm256_mul_pd(a1, b1)));
+                __m256d out1 = _mm256_sub_pd(_mm256_fmsub_pd(a2, b3, _mm256_mul_pd(a3, b2)), _mm256_mul_pd(b0, a1));
+                __m256d out2 = _mm256_sub_pd(_mm256_fmsub_pd(a3, b1, _mm256_mul_pd(a1, b3)), _mm256_mul_pd(b0, a2));
+                __m256d out3 = _mm256_sub_pd(_mm256_fmsub_pd(a1, b2, _mm256_mul_pd(a2, b1)), _mm256_mul_pd(b0, a3));
+                transpose4(out0, out1, out2, out3);
+
+                _mm256_storeu_pd(Y + storage_size * sample, out0);
+                _mm256_storeu_pd(Y + storage_size * sample + 4, out1);
+                _mm256_storeu_pd(Y + storage_size * sample + 8, out2);
+                _mm256_storeu_pd(Y + storage_size * sample + 12, out3);
+            }
+
+            for (; sample < len; ++sample) {
+                const double* MAGNUS_RESTRICT a = A + storage_size * sample;
+                double* MAGNUS_RESTRICT y = Y + storage_size * sample;
+                const double b0 = y[0] + total[0] * shift;
+                const double b1 = y[1] + total[1] * shift;
+                const double b2 = y[2] + total[2] * shift;
+                const double b3 = y[3] + total[3] * shift;
+
+                y[0] = a[1] * b1 + a[2] * b2 + a[3] * b3;
+                y[1] = -b0 * a[1] + a[2] * b3 - a[3] * b2;
+                y[2] = -b0 * a[2] + a[3] * b1 - a[1] * b3;
+                y[3] = -b0 * a[3] + a[1] * b2 - a[2] * b1;
+            }
+            return;
+        }
+#endif
+
+        const NumT x = scalar_as_num<NumT>(shift);
         for (size_t sample = 0; sample < len; ++sample) {
             const NumT* MAGNUS_RESTRICT a = A + sample * storage_size;
             NumT* MAGNUS_RESTRICT y = Y + sample * storage_size;
-
             std::array<NumT, storage_size> b;
             poet::static_for<storage_size>([&](auto I) {
                 b[I] = y[I] + total[I] * x;
@@ -238,6 +313,33 @@ namespace Magnus::SpaceCurve {
     }
 
     template <class NumT>
+    struct LinearCombine {
+        template <class First, class... Pairs>
+        MAGNUS_ALWAYS_INLINE static void apply(
+            [[maybe_unused]] size_t dim,
+            NumT* MAGNUS_RESTRICT dst,
+            First&& first,
+            Pairs&&... pairs
+        ) {
+            if constexpr (std::same_as<std::remove_cvref_t<First>, double>) {
+                static_assert(sizeof...(Pairs) > 0);
+                const NumT initial = scalar_as_num<NumT>(first);
+                poet::static_for<storage_size>([&] [[gnu::always_inline]] (auto I) {
+                    NumT value = dst[I] * initial;
+                    ((value += pairs.first[I] * scalar_as_num<NumT>(pairs.second)), ...);
+                    dst[I] = value;
+                });
+            } else {
+                poet::static_for<storage_size>([&] [[gnu::always_inline]] (auto I) {
+                    NumT value = first.first[I] * scalar_as_num<NumT>(first.second);
+                    ((value += pairs.first[I] * scalar_as_num<NumT>(pairs.second)), ...);
+                    dst[I] = value;
+                });
+            }
+        }
+    };
+
+    template <class NumT, poet::instruction_set Arch = default_isa()>
     using Policy = GenericMatrixPolicy<
         NumT,
         SpaceCurve::matmul<NumT>,
@@ -249,8 +351,9 @@ namespace Magnus::SpaceCurve {
         SpaceCurve::zero<NumT>,
         SpaceCurve::wzero<NumT>,
         SpaceCurve::wadd<NumT>,
-        SpaceCurve::sample_update<NumT>,
-        SpaceCurve::sample_update_vjp<NumT>
+        SpaceCurve::sample_update<NumT, Arch>,
+        SpaceCurve::sample_update_vjp<NumT>,
+        LinearCombine<NumT>
     >;
 
 }

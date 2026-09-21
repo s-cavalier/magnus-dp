@@ -27,8 +27,8 @@ namespace Magnus {
             A[0].zero();
 
             for (size_t i = 1; i < len; ++i) {
-                A[i].scale(dt / 2).add(tmp, dt / 2).add(A[i - 1]);
-                tmp.scale(-1).add(A[i], 2 / dt).add(A[i - 1], -2 / dt);
+                A[i].linear_combine(dt / 2, tmp.term(dt / 2), A[i - 1].term());
+                tmp.linear_combine(-1.0, A[i].term(2 / dt), A[i - 1].term(-2 / dt));
             }
         }
 
@@ -44,23 +44,19 @@ namespace Magnus {
             double half_dt = dt / 2;
             tmp.zero();
             for (size_t i = A.length() - 1; i > 0; --i) {
-                A[i].scale(half_dt).add(tmp);
-                tmp.scale(-1).add(A[i], 2);
+                A[i].linear_combine(half_dt, tmp.term());
+                tmp.linear_combine(-1.0, A[i].term(2));
             }
-            A[0].copy_from(tmp);
-            A[0].scale(0.5);
+            A[0].linear_combine(tmp.term(0.5));
         }
 
         void sum_vjp(matrix_span_t& A, const matrix_t& out, double dt) {
             size_t len = A.length();
-            A[0].copy_from(out);
-            A[0].scale(dt / 2);
+            A[0].linear_combine(out.term(dt / 2));
             for (size_t i = 1; i + 1 < len; ++i) {
-                A[i].copy_from(out);
-                A[i].scale(dt);
+                A[i].linear_combine(out.term(dt));
             }
-            A[len - 1].copy_from(out);
-            A[len - 1].scale(dt / 2);
+            A[len - 1].linear_combine(out.term(dt / 2));
         }
 
         void sum_vjp_add(matrix_span_t& A, const matrix_t& out, double dt) {

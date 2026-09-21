@@ -87,7 +87,13 @@ set_source_files_properties(
 )
 
 target_compile_features(magnus_core PUBLIC cxx_std_23)
-target_compile_options(magnus_core PUBLIC -O3 -march=native)
+target_compile_options(magnus_core PUBLIC
+    -O3
+    -march=native
+    -fcx-limited-range
+    -fno-signed-zeros
+)
+
 target_include_directories(magnus_core PUBLIC src)
 target_link_libraries(magnus_core PUBLIC BLAS::BLAS TBB::tbb poet::poet)
 target_link_libraries(magnus_core PUBLIC atomic)
@@ -108,6 +114,8 @@ target_compile_features(magnus_typing_gen PRIVATE cxx_std_23)
 target_compile_options(magnus_typing_gen PRIVATE
     -O3
     -march=native
+    -fcx-limited-range
+    -fno-signed-zeros
 )
 
 add_custom_command(

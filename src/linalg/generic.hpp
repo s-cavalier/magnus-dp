@@ -14,6 +14,34 @@ namespace Magnus {
         }
     }
 
+    template <class NumT>
+    struct GenericLinearCombine {
+        template <class First, class... Pairs>
+        MAGNUS_ALWAYS_INLINE static void apply(
+            size_t dim,
+            NumT* MAGNUS_RESTRICT dst,
+            First&& first,
+            Pairs&&... pairs
+        ) {
+            const size_t matrix_size = dim * dim;
+            if constexpr (std::same_as<std::remove_cvref_t<First>, double>) {
+                static_assert(sizeof...(Pairs) > 0);
+                const NumT initial = scalar_as_num<NumT>(first);
+                for (size_t index = 0; index < matrix_size; ++index) {
+                    NumT value = dst[index] * initial;
+                    ((value += pairs.first[index] * scalar_as_num<NumT>(pairs.second)), ...);
+                    dst[index] = value;
+                }
+            } else {
+                for (size_t index = 0; index < matrix_size; ++index) {
+                    NumT value = first.first[index] * scalar_as_num<NumT>(first.second);
+                    ((value += pairs.first[index] * scalar_as_num<NumT>(pairs.second)), ...);
+                    dst[index] = value;
+                }
+            }
+        }
+    };
+
     template <
         class NumT,
         MatMulKernelT<NumT> mm_kernel,
@@ -97,7 +125,8 @@ namespace Magnus {
         MatWideZeroKernelT<NumT> wz_kernel,
         MatWideAddKernelT<NumT> wa_kernel,
         SampleUpdateKernelT<NumT> su_kernel = generic_sample_update<NumT, mm_kernel, ma_kernel, cp_kernel>,
-        SampleUpdateVJPKernelT<NumT> suvjp_kernel = generic_sample_update_vjp<NumT, mmvjp_kernel, ma_kernel, cp_kernel>
+        SampleUpdateVJPKernelT<NumT> suvjp_kernel = generic_sample_update_vjp<NumT, mmvjp_kernel, ma_kernel, cp_kernel>,
+        class lc_kernel = GenericLinearCombine<NumT>
     >
     struct GenericMatrixPolicy {
         using numeric_t = NumT;
@@ -136,6 +165,16 @@ namespace Magnus {
 
         static void matwadd( size_t total, NumT* MAGNUS_RESTRICT dst, const NumT* MAGNUS_RESTRICT src ) {
             wa_kernel(total, dst, src);
+        }
+
+        template <class First, class... Pairs>
+        static void linear_combine(
+            size_t dim,
+            NumT* MAGNUS_RESTRICT dst,
+            First&& first,
+            Pairs&&... pairs
+        ) {
+            lc_kernel::apply(dim, dst, std::forward<First>(first), std::forward<Pairs>(pairs)...);
         }
 
         static void sample_update(

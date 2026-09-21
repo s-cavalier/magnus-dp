@@ -34,22 +34,20 @@ namespace Magnus {
             A[0].zero();
 
             prev1.copy_from(A[1]);
-            A[1].scale(half_dt).add(prev2, half_dt);
+            A[1].linear_combine(half_dt, prev2.term(half_dt));
 
             for (size_t i = 2; i < len; ++i) {
                 tmp.copy_from(A[i]);
 
                 if (i % 2 == 0) {
-                    A[i]
-                        .scale(third_dt)
-                        .add(prev2, third_dt)
-                        .add(prev1, 4 * third_dt)
-                        .add(A[i - 2]);
+                    A[i].linear_combine(
+                        third_dt,
+                        prev2.term(third_dt),
+                        prev1.term(4 * third_dt),
+                        A[i - 2].term()
+                    );
                 } else {
-                    A[i]
-                        .scale(half_dt)
-                        .add(prev1, half_dt)
-                        .add(A[i - 1]);
+                    A[i].linear_combine(half_dt, prev1.term(half_dt), A[i - 1].term());
                 }
 
                 prev2.copy_from(prev1);
@@ -87,7 +85,7 @@ namespace Magnus {
             auto reverse_odd = [&](size_t i) {
                 bar.copy_from(A[i]);
                 A[i - 1].add(bar);
-                A[i].scale(half_dt).add(pending);
+                A[i].linear_combine(half_dt, pending.term());
                 next_pending.add(bar, half_dt);
                 pending.zero();
                 std::swap(pending, next_pending);
@@ -96,7 +94,7 @@ namespace Magnus {
             auto reverse_even = [&](size_t i) {
                 bar.copy_from(A[i]);
                 A[i - 2].add(bar);
-                A[i].scale(third_dt).add(pending);
+                A[i].linear_combine(third_dt, pending.term());
                 next_pending.add(bar, 4 * third_dt);
                 pending.copy_from(bar);
                 pending.scale(third_dt);
@@ -117,32 +115,26 @@ namespace Magnus {
             reverse_even(2);
 
             bar.copy_from(A[1]);
-            A[1].scale(half_dt).add(pending);
-            A[0].copy_from(bar);
-            A[0].scale(half_dt).add(next_pending);
+            A[1].linear_combine(half_dt, pending.term());
+            A[0].linear_combine(bar.term(half_dt), next_pending.term());
         }
 
         void sum_vjp(matrix_span_t& A, const matrix_t& out, double dt) {
             size_t len = A.length();
             size_t simpson_last = (len % 2 == 1) ? len - 1 : len - 2;
 
-            A[0].copy_from(out);
-            A[0].scale(dt / 3);
+            A[0].linear_combine(out.term(dt / 3));
             for (size_t i = 1; i < simpson_last; i += 2) {
-                A[i].copy_from(out);
-                A[i].scale(4 * dt / 3);
+                A[i].linear_combine(out.term(4 * dt / 3));
             }
             for (size_t i = 2; i < simpson_last; i += 2) {
-                A[i].copy_from(out);
-                A[i].scale(2 * dt / 3);
+                A[i].linear_combine(out.term(2 * dt / 3));
             }
-            A[simpson_last].copy_from(out);
-            A[simpson_last].scale(dt / 3);
+            A[simpson_last].linear_combine(out.term(dt / 3));
 
             if (simpson_last + 1 < len) {
                 A[simpson_last].add(out, dt / 2);
-                A[simpson_last + 1].copy_from(out);
-                A[simpson_last + 1].scale(dt / 2);
+                A[simpson_last + 1].linear_combine(out.term(dt / 2));
             }
         }
 

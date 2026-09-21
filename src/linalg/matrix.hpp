@@ -5,6 +5,7 @@
 #include <memory>
 #include <utility>
 #include <algorithm>
+#include <type_traits>
 #include <stdexcept>
 #include <string>
 #include <concepts>
@@ -14,6 +15,14 @@
 #define MAGNUS_RESTRICT __restrict__
 #else
 #define MAGNUS_RESTRICT
+#endif
+#endif
+
+#ifndef MAGNUS_IS_X86
+#if defined(__i386__) || defined(__x86_64__) || defined(_M_IX86) || defined(_M_X64)
+#define MAGNUS_IS_X86 1
+#else
+#define MAGNUS_IS_X86 0
 #endif
 #endif
 
@@ -42,6 +51,7 @@ namespace Magnus {
         { T::matzero( size_t{}, m ) } -> std::same_as<void>;
         { T::matwzero( size_t{}, m ) } -> std::same_as<void>;
         { T::matwadd( size_t{}, m, cm ) } -> std::same_as<void>;
+        { T::linear_combine( size_t{}, m, double{}, std::pair<const typename T::numeric_t* MAGNUS_RESTRICT, double>{} ) } -> std::same_as<void>;
         { T::sample_update( size_t{}, size_t{}, cm, m, cm, double{}, m ) } -> std::same_as<void>;
         { T::sample_update_vjp( size_t{}, size_t{}, m, cm, m, cm, double{}, m ) } -> std::same_as<void>;
     };
@@ -231,6 +241,28 @@ namespace Magnus {
 
         MatrixView& scale( double scalar ) {
             matrix_policy_t::matscale( m_dim, m_data, scalar );
+            return *this;
+        }
+
+        std::pair<const NumT* MAGNUS_RESTRICT, double> term(double scalar = 1.0) const {
+            return {m_data, scalar};
+        }
+
+        template <class First, class... Terms>
+            requires (
+                (
+                    (std::same_as<std::remove_cvref_t<First>, double> && sizeof...(Terms) > 0) ||
+                    std::same_as<std::remove_cvref_t<First>, std::pair<const NumT* MAGNUS_RESTRICT, double>>
+                ) &&
+                (std::same_as<std::remove_cvref_t<Terms>, std::pair<const NumT* MAGNUS_RESTRICT, double>> && ...)
+            )
+        MatrixView& linear_combine(First&& first, Terms&&... terms) {
+            matrix_policy_t::linear_combine(
+                m_dim,
+                m_data,
+                std::forward<First>(first),
+                std::forward<Terms>(terms)...
+            );
             return *this;
         }
 

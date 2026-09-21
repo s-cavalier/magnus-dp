@@ -22,7 +22,9 @@ namespace Magnus {
 
         void prefix(matrix_span_t& A, double dt) {
             A[0].scale(dt);
-            for (size_t i = 1; i < A.length(); ++i) A[i].scale(dt).add(A[i - 1]);
+            for (size_t i = 1; i < A.length(); ++i) {
+                A[i].linear_combine(dt, A[i - 1].term());
+            }
         }
 
         void sum(matrix_span_t& A, matrix_t& out, double dt) {
@@ -39,8 +41,7 @@ namespace Magnus {
 
         void sum_vjp(matrix_span_t& A, const matrix_t& out, double dt) {
             for (size_t i = 0; i < A.length(); ++i) {
-                A[i].copy_from(out);
-                A[i].scale(dt);
+                A[i].linear_combine(out.term(dt));
             }
         }
 

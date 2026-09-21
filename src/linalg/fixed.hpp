@@ -201,6 +201,33 @@ namespace Magnus {
     }
 
     template <class NumT, size_t Dim>
+    struct FixedLinearCombine {
+        template <class First, class... Pairs>
+        MAGNUS_ALWAYS_INLINE static void apply(
+            [[maybe_unused]] size_t dim,
+            NumT* MAGNUS_RESTRICT dst,
+            First&& first,
+            Pairs&&... pairs
+        ) {
+            if constexpr (std::same_as<std::remove_cvref_t<First>, double>) {
+                static_assert(sizeof...(Pairs) > 0);
+                const NumT initial = scalar_as_num<NumT>(first);
+                poet::static_for<Dim * Dim>([&](auto I) {
+                    NumT value = dst[I] * initial;
+                    ((value += pairs.first[I] * scalar_as_num<NumT>(pairs.second)), ...);
+                    dst[I] = value;
+                });
+            } else {
+                poet::static_for<Dim * Dim>([&](auto I) {
+                    NumT value = first.first[I] * scalar_as_num<NumT>(first.second);
+                    ((value += pairs.first[I] * scalar_as_num<NumT>(pairs.second)), ...);
+                    dst[I] = value;
+                });
+            }
+        }
+    };
+
+    template <class NumT, size_t Dim>
     using FixedDimPolicy = GenericMatrixPolicy<
         NumT,
         fixed_dim_matmul<NumT, Dim>,
@@ -213,7 +240,8 @@ namespace Magnus {
         fixed_dim_matwzero<NumT, Dim>,
         fixed_dim_matwadd<NumT, Dim>,
         fixed_dim_sample_update<NumT, Dim>,
-        fixed_dim_sample_update_vjp<NumT, Dim>
+        fixed_dim_sample_update_vjp<NumT, Dim>,
+        FixedLinearCombine<NumT, Dim>
     >;
 
 
