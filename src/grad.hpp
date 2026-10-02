@@ -29,14 +29,14 @@ namespace Magnus::VJP {
         if ( n == 1 ) return;
 
         auto gl_table = GLTable::get();
-        GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
+        GLTable::DataView view = gl_table->get_order(gl_max_n(n));
 
         size_t worker_count = GLIntegrator::lane_count(view.order());
         std::vector<FwdPathWorkspace<Int>> workspaces;
         workspaces.reserve(worker_count);
         for (size_t i = 0; i < worker_count; ++i) workspaces.emplace_back(mat_dim, sample_len, alloc);
 
-        GLIntegrator::invoke(view.order(), [&](size_t q, int ln){
+        GLIntegrator::invoke(view.order(), [&](size_t q, int ln) noexcept {
             auto& ws = workspaces[ln];
             double x_q = view[q].second;
             double shift = x_q - 1;
@@ -112,7 +112,7 @@ namespace Magnus::VJP {
         auto& fwd_data = *fwd_data_tmp;
 
         auto gl_table = GLTable::get();
-        GLTable::DataView view = gl_table->get_order((n + 3) / 2);
+        GLTable::DataView view = gl_table->get_order(gl_max_n(n));
 
         size_t worker_count = GLIntegrator::lane_count(view.order());
         MemoryBuffer buffer(vjp_workspace_buffer_bytes<Int>(worker_count, dim, samples));
@@ -126,7 +126,7 @@ namespace Magnus::VJP {
             workspaces.back().dA.zero();
         }
 
-        GLIntegrator::invoke(view.order(), [&](size_t q, int ln){
+        GLIntegrator::invoke(view.order(), [&](size_t q, int ln) noexcept {
             auto& ws = workspaces[ln];
             auto [w_q, x_q] = view[q];
 
@@ -211,7 +211,7 @@ namespace Magnus::VJP {
         auto& fwd_data = *fwd_data_tmp;
 
         auto gl_table = GLTable::get();
-        GLTable::DataView view = gl_table->get_order((n + 3) / 2);
+        GLTable::DataView view = gl_table->get_order(gl_max_n(n));
 
         size_t worker_count = GLIntegrator::lane_count(view.order());
         MemoryBuffer buffer(vjp_workspace_buffer_bytes<Int>(worker_count, dim, samples));
@@ -225,7 +225,7 @@ namespace Magnus::VJP {
             workspaces.back().dA.zero();
         }
 
-        GLIntegrator::invoke(view.order(), [&](size_t q, int ln){
+        GLIntegrator::invoke(view.order(), [&](size_t q, int ln) noexcept {
             auto& ws = workspaces[ln];
             auto [w_q, x_q] = view[q];
 
@@ -324,7 +324,7 @@ namespace Magnus::VJP {
         auto& fwd_data = *fwd_data_tmp;
 
         auto gl_table = GLTable::get();
-        GLTable::DataView view = gl_table->get_order((n + 3) / 2);
+        GLTable::DataView view = gl_table->get_order(gl_max_n(n));
 
         size_t worker_count = GLIntegrator::lane_count(view.order());
         MemoryBuffer buffer(vjp_workspace_buffer_bytes<Int>(worker_count, dim, samples));
@@ -338,7 +338,7 @@ namespace Magnus::VJP {
             workspaces.back().dA.zero();
         }
 
-        GLIntegrator::invoke(view.order(), [&](size_t q, int ln){
+        GLIntegrator::invoke(view.order(), [&](size_t q, int ln) noexcept {
             auto& ws = workspaces[ln];
             auto [w_q, x_q] = view[q];
 

@@ -34,7 +34,7 @@ def test_jax_matrix_record_vjp_controls_return_contract():
     )
 
     assert out.shape == recorded_out.shape == (2, 2)
-    assert carry.shape == (3, 3, 9, 2, 2)
+    assert carry.shape == (2, 3, 9, 2, 2)
     np.testing.assert_allclose(out, recorded_out, rtol=0.0, atol=0.0)
 
 
@@ -50,7 +50,7 @@ def test_jax_spacecurve_record_vjp_controls_return_contract():
     )
 
     assert out.shape == recorded_out.shape == (3,)
-    assert carry.shape == (3, 3, 9, 2, 2)
+    assert carry.shape == (2, 3, 9, 2, 2)
     np.testing.assert_allclose(out, recorded_out, rtol=0.0, atol=0.0)
 
 

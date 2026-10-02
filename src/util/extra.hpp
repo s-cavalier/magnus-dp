@@ -9,7 +9,7 @@
 namespace Magnus {
 
     constexpr size_t gl_max_n(size_t n) {
-        return (n + 3) / 2;
+        return (n + 1) / 2;
     }
 
     constexpr size_t total_orders(size_t n) {

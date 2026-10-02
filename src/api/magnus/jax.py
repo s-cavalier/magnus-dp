@@ -26,6 +26,10 @@ __all__ = [
 _REGISTERED = False
 
 
+def _gl_order(n: int) -> int:
+    return (operator.index(n) + 1) // 2
+
+
 def register_ffi_targets() -> None:
     global _REGISTERED
 
@@ -53,7 +57,7 @@ def _matrix_output_type(op: KernelOpName, n: int, data: Any):
 
 def _matrix_carry_type(n: int, data: Any):
     shape = tuple(data.shape)
-    return jax.ShapeDtypeStruct(((operator.index(n) + 3) // 2, operator.index(n) - 1, shape[0], shape[1], shape[2]), data.dtype)
+    return jax.ShapeDtypeStruct((_gl_order(n), operator.index(n) - 1, shape[0], shape[1], shape[2]), data.dtype)
 
 
 def _spacecurve_output_type(op: KernelOpName, n: int, data: Any):
@@ -64,7 +68,7 @@ def _spacecurve_output_type(op: KernelOpName, n: int, data: Any):
 
 def _spacecurve_carry_type(n: int, data: Any):
     shape = tuple(data.shape)
-    return jax.ShapeDtypeStruct(((operator.index(n) + 3) // 2, operator.index(n) - 1, shape[0], 2, 2), data.dtype)
+    return jax.ShapeDtypeStruct((_gl_order(n), operator.index(n) - 1, shape[0], 2, 2), data.dtype)
 
 
 def _matrix_call(

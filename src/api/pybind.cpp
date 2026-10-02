@@ -448,7 +448,7 @@ PYBIND11_MODULE(_core, m) {
     m.def(
         "max_order",
         &Magnus::detail::max_order,
-        "Return the max available Gauss-Legendre order. Max magnus order is then any n satisfying (n + 3) / 2 <= max_order()."
+        "Return the max available Gauss-Legendre order. Max magnus order is then any n satisfying (n + 1) / 2 <= max_order()."
     );
 
     m.def(

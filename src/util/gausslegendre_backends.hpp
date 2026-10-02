@@ -2,6 +2,7 @@
 #define __GAUSS_LEGENDRE_BACKENDS_HPP__
 
 #include "composer/dispatch.hpp"
+#include "extra.hpp"
 #include "gausslegendre.hpp"
 
 namespace Magnus {
@@ -12,7 +13,7 @@ namespace Magnus {
             if (p.n <= 1) return false;
 
             constexpr size_t min_parallel_work = 30'000;
-            const size_t gl_order = (p.n + 3) / 2;
+            const size_t gl_order = gl_max_n(p.n);
             const size_t work_per_sample = (p.n - 1) * gl_order;
             const size_t min_samples = (min_parallel_work + work_per_sample - 1) / work_per_sample;
             return p.samples >= min_samples;

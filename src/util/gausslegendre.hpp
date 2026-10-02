@@ -6,13 +6,11 @@
 #include <utility>
 #include <memory>
 #include <atomic>
-#include <concepts>
 #include <algorithm>
-#include <exception>
 #include <functional>
 #include <latch>
-#include <mutex>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 #ifdef _OPENMP
 #include <omp.h>
@@ -27,7 +25,7 @@ namespace Magnus {
             virtual ~GLThreadPool() = default;
 
             virtual size_t thread_count() const = 0;
-            virtual void schedule(std::move_only_function<void()> fn) = 0;
+            virtual void schedule(std::move_only_function<void() noexcept> fn) noexcept = 0;
         };
 
         inline thread_local GLThreadPool* current_gl_thread_pool = nullptr;
@@ -133,10 +131,13 @@ namespace Magnus {
         DataView get_order(size_t n) const override;
     };
 
+    template <class Fn>
+    concept GLNoThrowInvocable = std::is_nothrow_invocable_v<Fn&, size_t, int>;
+
     struct GL_forloop {
         static constexpr size_t lane_count([[maybe_unused]]size_t) { return 1; }
 
-        static void invoke(size_t order, auto&& fn) {
+        static void invoke(size_t order, GLNoThrowInvocable auto&& fn) {
             for (size_t q = 0; q < order; ++q) std::invoke(fn, q, 0);
         }
 
@@ -151,7 +152,7 @@ namespace Magnus {
 #endif
         }
 
-        static void invoke(size_t order, auto&& fn) {
+        static void invoke(size_t order, GLNoThrowInvocable auto&& fn) {
 #ifdef _OPENMP
             int lanes = static_cast<int>(lane_count(order));
             #pragma omp parallel for schedule(static) num_threads(lanes)
@@ -175,48 +176,30 @@ namespace Magnus {
             return std::min(order, threads);
         }
 
-        static void invoke(size_t order, auto&& fn) {
+        static void invoke(size_t order, GLNoThrowInvocable auto&& fn) {
             detail::GLThreadPool* pool = detail::current_gl_thread_pool;
             if (pool == nullptr) {
                 throw std::runtime_error("no thread pool is active for the current call");
             }
 
             const size_t lanes = lane_count(order);
-            std::latch done(static_cast<std::ptrdiff_t>(lanes - 1));
-            std::mutex error_mutex;
-            std::exception_ptr first_error;
+            std::latch done(lanes - 1);
 
-            auto record_error = [&](std::exception_ptr error) {
-                std::lock_guard lock(error_mutex);
-                if (!first_error) first_error = std::move(error);
-            };
-
-            auto run_lane = [&](size_t lane) {
-                try {
-                    const size_t begin = order * lane / lanes;
-                    const size_t end = order * (lane + 1) / lanes;
-                    for (size_t q = begin; q < end; ++q) std::invoke(fn, q, lane);
-                } catch (...) {
-                    record_error(std::current_exception());
-                }
+            auto run_lane = [&](size_t lane) noexcept {
+                const size_t begin = order * lane / lanes;
+                const size_t end = order * (lane + 1) / lanes;
+                for (size_t q = begin; q < end; ++q) std::invoke(fn, q, lane);
             };
 
             for (size_t lane = 1; lane < lanes; ++lane) {
-                try {
-                    pool->schedule([&, lane] {
-                        run_lane(lane);
-                        done.count_down();
-                    });
-                } catch (...) {
-                    record_error(std::current_exception());
+                pool->schedule([&, lane] noexcept {
+                    run_lane(lane);
                     done.count_down();
-                }
+                });
             }
 
             run_lane(0);
             done.wait();
-
-            if (first_error) std::rethrow_exception(first_error);
         }
     };
 

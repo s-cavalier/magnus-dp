@@ -41,7 +41,7 @@ namespace Magnus {
 
         // GL weights/nodes
         auto gl_table = GLTable::get();
-        GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
+        GLTable::DataView view = gl_table->get_order(gl_max_n(n));
 
         size_t worker_count = GLIntegrator::lane_count(view.order());
         size_t local_buffer_bytes = fwd_workspace_buffer_bytes<Int>(
@@ -59,7 +59,7 @@ namespace Magnus {
 
         GLIntegrator::invoke(
             view.order(),
-            [&](size_t q, int ln){
+            [&](size_t q, int ln) noexcept {
                 auto [ w_q, x_q ] = view[q];
                 auto& ws = workspaces[ln];
                 double shift = x_q - 1;
@@ -124,7 +124,7 @@ namespace Magnus {
 
         // GL weights/nodes
         auto gl_table = GLTable::get();
-        GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
+        GLTable::DataView view = gl_table->get_order(gl_max_n(n));
 
         size_t worker_count = GLIntegrator::lane_count(view.order());
         size_t local_buffer_bytes = fwd_workspace_buffer_bytes<Int>(
@@ -145,7 +145,7 @@ namespace Magnus {
 
         GLIntegrator::invoke(
             view.order(),
-            [&](size_t q, int ln){
+            [&](size_t q, int ln) noexcept {
                 auto [ w_q, x_q ] = view[q];
                 auto& ws = workspaces[ln];
                 double shift = x_q - 1;
@@ -208,7 +208,7 @@ namespace Magnus {
 
         // GL weights/nodes
         auto gl_table = GLTable::get();
-        GLTable::DataView view = gl_table->get_order( (n + 3) / 2 );
+        GLTable::DataView view = gl_table->get_order(gl_max_n(n));
 
         size_t worker_count = GLIntegrator::lane_count(view.order());
         size_t local_buffer_bytes = fwd_workspace_buffer_bytes<Int>(
@@ -229,7 +229,7 @@ namespace Magnus {
 
         GLIntegrator::invoke(
             view.order(),
-            [&](size_t q, int ln){
+            [&](size_t q, int ln) noexcept {
                 auto [ w_q, x_q ] = view[q];
                 auto& ws = workspaces[ln];
                 double shift = x_q - 1;

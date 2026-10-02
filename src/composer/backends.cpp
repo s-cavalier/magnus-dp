@@ -35,7 +35,7 @@ std::unique_ptr<Magnus::KernelPlan> dispatch_plan(
     initialize_default_gl_table();
 
     if ( p.n > 1 ) {
-        size_t required_order = (p.n + 3) / 2;
+        size_t required_order = gl_max_n(p.n);
         if ( required_order > GLTable::get()->max_order() ) throw std::invalid_argument("requested magnus order exceeds GL table. Consider providing a larger table.");
     }
 

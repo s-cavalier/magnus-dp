@@ -32,8 +32,8 @@ public:
         return threads;
     }
 
-    void schedule(std::move_only_function<void()> fn) override {
-        pool.Schedule([fn = std::move(fn)]() mutable {
+    void schedule(std::move_only_function<void() noexcept> fn) noexcept override {
+        pool.Schedule([fn = std::move(fn)]() mutable noexcept {
             std::invoke(fn);
         });
     }

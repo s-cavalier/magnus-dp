@@ -299,7 +299,7 @@ def test_matrix_compute_ops_and_shapes():
 
 def test_gl_backend_dispatch_and_auto_selection():
     small_samples = 33
-    large_samples = 1025
+    large_samples = 2049
 
     serial_small = magnus.compute(
         4,
@@ -513,7 +513,7 @@ def test_compute_can_return_vjp_data():
     )
 
     assert output.shape == (2, 2)
-    assert vjp_data.shape == (3, 3, 9, 2, 2)
+    assert vjp_data.shape == (2, 3, 9, 2, 2)
 
 
 def test_compute_sc_can_return_vjp_data():
@@ -528,7 +528,7 @@ def test_compute_sc_can_return_vjp_data():
     )
 
     assert output.shape == (3,)
-    assert vjp_data.shape == (3, 3, 9, 2, 2)
+    assert vjp_data.shape == (2, 3, 9, 2, 2)
 
 
 @pytest.mark.parametrize("op", ["one", "many", "sum"])
