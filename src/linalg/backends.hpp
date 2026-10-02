@@ -62,6 +62,8 @@ namespace SpaceCurve {
 
     using MatrixBackends = type_list<
         FixedBackend<2>,
+        FixedBackend<3>,
+        FixedBackend<4>,
         ManualBackend,
         BlasBackend,
         SpaceCurve::Backend
