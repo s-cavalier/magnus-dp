@@ -15,6 +15,25 @@ endif()
 
 set(MAGNUS_GL_MAX_ORDER 64 CACHE STRING "Maximum generated Gauss-Legendre order")
 
+set(MAGNUS_FIXED_DIMS "2;3;4" CACHE STRING
+    "Matrix dimensions to instantiate as Fixed<N> backends")
+
+foreach(MAGNUS_FIXED_DIM IN LISTS MAGNUS_FIXED_DIMS)
+    if(NOT MAGNUS_FIXED_DIM MATCHES "^[2-8]$")
+        message(FATAL_ERROR
+            "MAGNUS_FIXED_DIMS entries must be integers in the range 2..8; "
+            "got '${MAGNUS_FIXED_DIM}'")
+    endif()
+    set(MAGNUS_FIXED_ENABLE_${MAGNUS_FIXED_DIM} ON)
+endforeach()
+
+set(MAGNUS_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+file(MAKE_DIRECTORY "${MAGNUS_GENERATED_INCLUDE_DIR}")
+configure_file(
+    src/linalg/fixed_config.hpp.in
+    "${MAGNUS_GENERATED_INCLUDE_DIR}/fixed_config.hpp"
+)
+
 set(MAGNUS_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/magnus")
 set(MAGNUS_GENERATED_TYPING_FILE "${CMAKE_CURRENT_BINARY_DIR}/_generated_typing.pyi")
 
@@ -94,7 +113,10 @@ target_compile_options(magnus_core PUBLIC
     -fno-signed-zeros
 )
 
-target_include_directories(magnus_core PUBLIC src)
+target_include_directories(magnus_core PUBLIC
+    src
+    "${MAGNUS_GENERATED_INCLUDE_DIR}"
+)
 target_link_libraries(magnus_core PUBLIC BLAS::BLAS TBB::tbb poet::poet)
 target_link_libraries(magnus_core PUBLIC atomic)
 

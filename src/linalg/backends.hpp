@@ -2,6 +2,7 @@
 #define __MAT_BACKENDS_HPP__
 #include "composer/dispatch.hpp"
 #include "fixed.hpp"
+#include "fixed_config.hpp"
 #include "manual.hpp"
 #include "blas.hpp"
 #include "spacecurve.hpp"
@@ -61,9 +62,27 @@ namespace SpaceCurve {
 }
 
     using MatrixBackends = type_list<
+#if MAGNUS_FIXED_ENABLE_2
         FixedBackend<2>,
+#endif
+#if MAGNUS_FIXED_ENABLE_3
         FixedBackend<3>,
+#endif
+#if MAGNUS_FIXED_ENABLE_4
         FixedBackend<4>,
+#endif
+#if MAGNUS_FIXED_ENABLE_5
+        FixedBackend<5>,
+#endif
+#if MAGNUS_FIXED_ENABLE_6
+        FixedBackend<6>,
+#endif
+#if MAGNUS_FIXED_ENABLE_7
+        FixedBackend<7>,
+#endif
+#if MAGNUS_FIXED_ENABLE_8
+        FixedBackend<8>,
+#endif
         ManualBackend,
         BlasBackend,
         SpaceCurve::Backend
